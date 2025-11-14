@@ -9,9 +9,10 @@ build-backend = "hatchling.build"
 name = "nsight-python"
 dynamic = ["version"]
 description = "Profiling tools for GPU kernel analysis"
-readme = "README.md"
+readme = "DESCRIPTION.rst"
 requires-python = ">=3.10"
-license = { text = "NVIDIA Proprietary" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "NVIDIA Corporation" }
 ]
@@ -21,6 +22,19 @@ dependencies = [
   "numpy",
   "matplotlib",
   "nvidia-ml-py",
+  "ncu-report",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +43,7 @@ cu13 = ["cuda-core[cu13]"]
 
 [project.urls]
 Repository = "https://github.com/NVIDIA/nsight-python"
+License = "https://docs.nvidia.com/nsight-python/license.html"
 
 [tool.hatch.build.targets.wheel]
 include = ["nsight"]
@@ -52,6 +67,9 @@ filterwarnings = [
 
 ]
 
+[tool.hatch.envs.default.env-vars]
+PIP_EXTRA_INDEX_URL="https://test.pypi.org/simple/"
+
 [tool.hatch.envs.docs]
 dependencies = [
   "sphinx>=7.0",
@@ -63,7 +81,7 @@ dependencies = [
 
 [tool.hatch.envs.docs.scripts]
 build = [
-  "sphinx-build -b html docs/source html",
+  "sphinx-build -W -b html docs/source html",
 ]
 
 [tool.hatch.envs.lint]

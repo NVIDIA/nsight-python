@@ -8,19 +8,22 @@ Docs
 
 .. toctree::
    :maxdepth: 2
+   :caption: Overview
+
+   overview/introduction
+   overview/quickstart
+   overview/core_concepts
+   overview/architecture
+
+
+.. toctree::
+   :maxdepth: 2
    :caption: Release Notes
 
    release_notes/known_issues
    release_notes/support
+   release_notes/disclaimer
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Overview
-
-   overview/welcome
-   overview/quickstart
-   overview/core_concepts
-   overview/architecture
 
 .. toctree::
    :maxdepth: 2
@@ -53,8 +56,7 @@ Docs
    :maxdepth: 1
    :caption: Other Resources
 
-   faq
-   troubleshooting
+   feedback
    contributing
    license
    GitHub Repository <https://github.com/NVIDIA/nsight-python>

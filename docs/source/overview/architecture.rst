@@ -7,7 +7,7 @@ Architecture
 Nsight Python's architecture consists of:
 
 1. **Collection**: Runs your benchmark under NVIDIA Nsight Compute. See :doc:`../collection/index`.
-2. **Extraction**: Parses Nsight reports using `ncu-report.py` and associates metrics with annotations/configs. See :doc:`../extraction`.
+2. **Extraction**: Parses Nsight reports using `ncu-report` and associates metrics with annotations/configs. See :doc:`../extraction`.
 3. **Visualization**: Converts data to a pandas DataFrame and optionally plots results via matplotlib. See :doc:`../visualization`.
 
 Internally, Nsight Python:

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -59,12 +62,10 @@ autodoc_typehints = "description"
 typehints_use_rtype = True
 typehints_use_signature = True
 
-html_theme_options: dict[str, str | dict[str, str]] = {
-    "light_css_variables": {
-        "color-brand-primary": "#76B900",
-        "color-brand-content": "#76B900",
-        "color-admonition-background": "orange",
-    },
+toc_object_entries_show_parents = "all"
+
+html_context = {
+    "release": release,
 }
 
-toc_object_entries_show_parents = "all"
+html_theme_options = {"navbar_start": ["navbar-logo", "version"]}

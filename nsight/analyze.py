@@ -120,14 +120,17 @@ def kernel(
         cache_control: Control the behavior of the GPU caches during profiling. Allowed values:
 
             - ``"all"``: All GPU caches are flushed before each kernel replay iteration during profiling. While metric values in the execution environment of the application might be slightly different without invalidating the caches, this mode offers the most reproducible metric results across the replay passes and also across multiple runs of the target application.
-            - ``"none"``: No GPU caches are flushed during profiling. This can improve performance and better replicates the application behavior if only a single kernel replay pass is necessary for metric collection. However, some metric results will vary depending on prior GPU work, and between replay iterations. This can lead to inconsistent and out-of-bounds metric values
+            - ``"none"``: No GPU caches are flushed during profiling. This can improve performance and better replicates the application behavior if only a single kernel replay pass is necessary for metric collection. However, some metric results will vary depending on prior GPU work, and between replay iterations. This can lead to inconsistent and out-of-bounds metric values.
+
             Default: ``"all"``
+
         replay_mode: Mechanism used for replaying a kernel launch multiple times to collect selected metrics. Allowed values:
 
             - ``"kernel"``:  Replay individual kernel launches  during the execution of the application.
             - ``"range"``: Replay range of  kernel launches during the execution of the application. Ranges are defined using nsight.annotate.
 
             Default: ``"kernel"``
+
         thermal_control : Toggles whether to enable thermal control. Default: ``True``
         output: Controls the verbosity level of the output.
 
@@ -137,10 +140,11 @@ def kernel(
 
         output_prefix: When specified, all intermediate profiler files are created with this prefix.
             For example, if `output_prefix="/home/user/run1_"`, the profiler will generate:
-                - /home/user/run1_ncu-output-<name_of_decorated_function>-<run_id>.log
-                - /home/user/run1_ncu-output-<name_of_decorated_function>-<run_id>.ncu-rep
-                - /home/user/run1_processed_data-<name_of_decorated_function>-<run_id>.csv
-                - /home/user/run1_profiled_data-<name_of_decorated_function>-<run_id>.csv
+
+            - /home/user/run1_ncu-output-<name_of_decorated_function>-<run_id>.log
+            - /home/user/run1_ncu-output-<name_of_decorated_function>-<run_id>.ncu-rep
+            - /home/user/run1_processed_data-<name_of_decorated_function>-<run_id>.csv
+            - /home/user/run1_profiled_data-<name_of_decorated_function>-<run_id>.csv
 
             Where ``<run_id>`` is a counter that increments each time the decorated function is called
             within the same Python process (0, 1, 2, ...). This allows calling the same decorated function

@@ -2,7 +2,8 @@
 
 # Nsight Python
 
-A lightweight profiling toolkit for NVIDIA GPUs, built on top of Nsight Compute.
+Nsight Python is a Python kernel profiling interface based on NVIDIA Nsight Tools.
+It simplifies performance benchmarking and visualization of performance metrics — all in just a few lines of Python.
 
 Nsight Python helps you unlock peak performance from your GPU kernels by simplifying performance benchmarking and visualization — all in just a few lines of Python code.
 
@@ -46,27 +47,20 @@ Visit [pytorch.org](https://pytorch.org/get-started/locally/) for installation c
 
 ### Running Tests
 
-To run only the test suite:
-
 ```bash
-cd tests
-pytest -v
-```
-
-To run only the examples as tests:
-
-```bash
-cd examples
-pytest test_examples.py -v
-```
-
-To run both tests and examples:
-
-```bash
-# From the repository root
-pytest tests/ examples/test_examples.py -v
+pytest tests -v       # Run just unit tests
+pytest examples -v    # Run just the examples
+pytest -v             # Run the tests and examples
 ```
 
 ## Contributing Guide
 
 Review the [CONTRIBUTING.md](Contributing.md) file for information on how to contribute code and issues to the project.
+
+## License
+
+All files hosted in this repository are subject to the [Apache 2.0](LICENSE) license.
+
+## Disclaimer
+
+nsight-python is in a Beta state. Beta products may not be fully functional, may contain errors or design flaws, and may be changed at any time without notice. We appreciate your feedback to improve and iterate on our Beta products.
