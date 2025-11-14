@@ -5,9 +5,7 @@
 Nsight Python: NVIDIA Profiling Tools for GPU Kernel Analysis
 *******************************************************************
 
-`Nsight Python <https://docs.nvidia.com/nsight-python/>`_ provides
-Python decorators and utilities for profiling CUDA kernels using NVIDIA Nsight Compute, enabling
-developers to analyze GPU performance with minimal code changes.
+`Nsight Python <https://docs.nvidia.com/nsight-python/>`_  is a Python kernel profiling interface that automates performance analysis across multiple kernel configurations using NVIDIA Nsight Tools.
 
 * `Documentation <https://docs.nvidia.com/nsight-python/>`_
 * `Examples <https://github.com/NVIDIA/nsight-python/tree/main/examples>`_

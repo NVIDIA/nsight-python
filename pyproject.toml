@@ -8,13 +8,12 @@ build-backend = "hatchling.build"
 [project]
 name = "nsight-python"
 dynamic = ["version"]
-description = "Profiling tools for GPU kernel analysis"
+description = "Python GPU kernel profiling interface"
 readme = "DESCRIPTION.rst"
 requires-python = ">=3.10"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = { file = "LICENSE" }
 authors = [
-    { name = "NVIDIA Corporation" }
+    { name = "NVIDIA Corporation", email = "nsight-compute-python@nvidia.com"}
 ]
 dependencies = [
   "nvtx",
