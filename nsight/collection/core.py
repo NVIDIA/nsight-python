@@ -95,6 +95,18 @@ def _sanitize_configs(
     # Validate that all configs have the same number of arguments
     if len(configs) == 0:
         raise exceptions.ProfilerException("configs list cannot be empty")
+
+    # If function takes exactly one argument, allow scalar configs
+    sig = inspect.signature(func)
+    expected_arg_count = len(sig.parameters)
+    if expected_arg_count == 1:
+        normalized_configs = []
+        for config in configs:
+            if isinstance(config, str) or not isinstance(config, Sequence):
+                normalized_configs.append((config,))
+            else:
+                normalized_configs.append(config)
+        configs = normalized_configs
     config_lengths = [len(config) for config in configs]
     if not all(length == config_lengths[0] for length in config_lengths):
         raise exceptions.ProfilerException(
