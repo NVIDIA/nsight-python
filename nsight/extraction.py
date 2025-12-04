@@ -38,6 +38,12 @@ def extract_ncu_action_data(action: Any, metric: str) -> utils.NCUActionData:
     Returns:
         A data container with extracted metric, clock rates, and GPU name.
     """
+    if metric not in action.metric_names():
+        error_message = exceptions.get_metric_error_message(
+            metric, error_type=exceptions.MetricErrorType.UNSUPPORTED
+        )
+        raise exceptions.ProfilerException(error_message)
+
     return utils.NCUActionData(
         name=action.name(),
         value=(
@@ -154,8 +160,10 @@ def extract_df_from_report(
                     (
                         f"More than one (total={num_kernels}) kernel is launched within the {annotation} annotation.\n"
                         "We expect one kernel per annotation.\n"
-                        "Try `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n"
-                        "or add some of the kernels to the ignore_kernel_list .\n"
+                        "Try one of the following solutions:\n"
+                        "  - Use `replay_mode='range'` to profile the entire annotated range instead of individual kernels\n"
+                        "  - Use `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n"
+                        "  - Add some of the kernels to the ignore_kernel_list\n"
                         "Kernels are:\n"
                         + "\n".join(sorted(set(x.name for x in annotation_data)))
                     )

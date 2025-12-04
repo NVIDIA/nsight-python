@@ -44,7 +44,8 @@ def launch_ncu(
 
     Raises:
         NCUNotAvailableError: If NCU is not available on the system.
-        SystemExit: If profiling fails due to an error from NVIDIA Nsight Compute.
+        ProfilerException: If profiling fails due to an error from NVIDIA Nsight Compute.
+        ValueError: If invalid values are provided for cache_control, clock_control, or replay_mode.
 
     Returns:
         path to the NVIDIA Nsight Compute log file
@@ -112,8 +113,7 @@ def launch_ncu(
             )
 
             error_message = utils.format_ncu_error_message(error_context)
-            print(error_message)
-            sys.exit(1)
+            raise exceptions.ProfilerException(error_message) from None
     else:
         subprocess.run([sys.executable, script_path], env=env)
         raise exceptions.NCUNotAvailableError(

@@ -62,3 +62,6 @@ Thumbs.db
 
 # Built documentation
 html/
+
+# Test report
+report.xml

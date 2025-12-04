@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from itertools import islice
 from typing import Any, Iterator
 
-from nsight.exceptions import CUDA_CORE_UNAVAILABLE_MSG, NCUErrorContext
+from nsight.exceptions import (
+    CUDA_CORE_UNAVAILABLE_MSG,
+    MetricErrorType,
+    NCUErrorContext,
+    get_metric_error_message,
+)
 
 # Try to import cuda-core (optional dependency)
 try:
@@ -307,8 +312,7 @@ def format_ncu_error_message(context: NCUErrorContext) -> str:
 
     if context.errors and INVALID_METRIC_ERROR_HINT in context.errors[0]:
         message_parts.append(
-            f"Invalid value '{context.metric}' for 'metric' parameter for nsight.analyze.kernel(). "
-            f"\nPlease refer ncu --query-metrics for list of supported metrics."
+            get_metric_error_message(context.metric, error_type=MetricErrorType.INVALID)
         )
     else:
         message_parts.append("\n".join(f"- {error}" for error in context.errors))

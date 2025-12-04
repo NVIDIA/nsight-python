@@ -25,7 +25,7 @@ import nsight
 
 
 # Define a simple Triton vector addition kernel
-@triton.jit  # type: ignore[misc]
+@triton.jit  # type: ignore[untyped-decorator]
 def add_kernel(
     x_ptr: torch.Tensor,
     y_ptr: torch.Tensor,

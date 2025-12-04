@@ -56,7 +56,7 @@ def test_annotate_decorator_simple() -> None:
         ),
         False,
     ],
-)  # type: ignore[misc]
+)  # type: ignore[untyped-decorator]
 def test_annotate_context_manager(ignore_failures: bool) -> None:
     @nsight.analyze.kernel(configs=configs, runs=7, output="quiet")
     def annotate_context_manager(n: int) -> None:
@@ -91,7 +91,7 @@ def test_annotate_context_manager(ignore_failures: bool) -> None:
         ),
         False,
     ],
-)  # type: ignore[misc]
+)  # type: ignore[untyped-decorator]
 def test_annotate_decorator(ignore_failures: bool) -> None:
     @nsight.annotate(
         f"ignore_failures={ignore_failures}", ignore_failures=ignore_failures

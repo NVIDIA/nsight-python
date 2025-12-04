@@ -8,13 +8,31 @@ Test suite for Nsight Python profiler functionality.
 import os
 import shutil
 import tempfile
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 import torch
+from cuda.core.experimental import Device, LaunchConfig, Program, launch
 
 import nsight
 from nsight import exceptions
+
+# Common CUDA kernel code for tests that launch multiple kernels
+CUDA_KERNEL_CODE = """
+extern "C" __global__ void vector_add(const float* a, const float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        c[idx] = a[idx] + b[idx];
+    }
+}
+
+extern "C" __global__ void vector_multiply(const float* a, const float* b, float* c, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        c[idx] = a[idx] * b[idx];
+    }
+}
+"""
 
 
 def _simple_kernel_impl(x: int, y: int, annotation: str = "test") -> None:
@@ -292,9 +310,6 @@ def test_no_args_function_with_derive_metric() -> None:
     assert df["NumRuns"].iloc[0] == 2, f"Expected 2 runs, got {df['NumRuns'].iloc[0]}"
 
 
-# ----------------------------------------------------------------------------
-
-
 # ============================================================================
 # Parameter validation tests
 # ============================================================================
@@ -402,7 +417,7 @@ def varying_multiple_kernels_per_run(flag: bool) -> None:
             _ = a + b
 
 
-@pytest.mark.skip("don't yet support varying number of kernels per run")  # type: ignore[misc]
+@pytest.mark.skip("don't yet support varying number of kernels per run")  # type: ignore[untyped-decorator]
 def test_varying_multiple_kernels_per_run() -> None:
     """Test kernel with varying number of operations per run (currently unsupported)."""
     varying_multiple_kernels_per_run()
@@ -480,7 +495,7 @@ def test_parameter_output_prefix() -> None:
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("output_csv", [True, False])  # type: ignore[misc]
+@pytest.mark.parametrize("output_csv", [True, False])  # type: ignore[untyped-decorator]
 def test_parameter_output_csv(output_csv: bool) -> None:
     """Test the output_csv parameter to control CSV file generation."""
     output_dir = "/tmp/test_output_csv/"
@@ -532,3 +547,335 @@ def test_parameter_output_csv(output_csv: bool) -> None:
         if "NSPY_NCU_PROFILE" not in os.environ:
             if os.path.exists(output_dir):
                 shutil.rmtree(output_dir)
+
+
+# ============================================================================
+# Ignore kernel list tests
+# ============================================================================
+
+
+@pytest.mark.parametrize("ignore_kernel_list", [None, ["vector_multiply"]])  # type: ignore[untyped-decorator]
+def test_parameter_ignore_kernel_list(ignore_kernel_list: None | list[str]) -> None:
+    """Test the ignore_kernel_list parameter to filter out specific kernels"""
+
+    @nsight.analyze.kernel(
+        configs=[(1024,)], runs=1, output="quiet", ignore_kernel_list=ignore_kernel_list
+    )
+    def ignore_kernel_func(n: int) -> None:
+
+        device = Device()
+        device.set_current()
+        s = device.create_stream()
+
+        program = Program(CUDA_KERNEL_CODE, "c++")
+        module = program.compile("ptx")
+        kernel_add = module.get_kernel("vector_add")
+        kernel_mul = module.get_kernel("vector_multiply")
+
+        # Allocate device memory
+        size_bytes = n * 4  # float32
+        d_a = device.allocate(size_bytes)
+        d_b = device.allocate(size_bytes)
+        d_c = device.allocate(size_bytes)
+
+        # Launch both kernels in one annotation
+        with nsight.annotate(f"test_kernels_{ignore_kernel_list}"):
+            block = 256
+            grid = (size_bytes + block - 1) // block
+            config = LaunchConfig(grid=grid, block=block)
+
+            # This kernel should be ignored
+            launch(s, config, kernel_add, d_a, d_b, d_c, n)
+
+            # This kernel should be profiled
+            launch(s, config, kernel_mul, d_a, d_b, d_c, n)
+
+        # Synchronize
+        device.sync()
+
+    if ignore_kernel_list is None:
+        with pytest.raises(
+            RuntimeError,
+            match=f"More than one.*kernel.*launched within the test_kernels_{ignore_kernel_list} annotation",
+        ):
+            profile_output = ignore_kernel_func()
+    else:
+
+        profile_output = ignore_kernel_func()
+        kernel_names = profile_output.to_dataframe()["Kernel"].to_list()
+        ignored_kernel_name = ignore_kernel_list[0]
+        assert ignored_kernel_name not in kernel_names
+
+
+# ============================================================================
+# Clock control tests
+# ============================================================================
+
+
+@pytest.mark.parametrize("clock_control", ["base", "none", "invalid_value"])  # type: ignore[untyped-decorator]
+def test_parameter_clock_control(
+    clock_control: Literal["base", "none", "invalid_value"],
+) -> None:
+    """Test the clock_control parameter to control GPU clock locking."""
+
+    if clock_control == "invalid_value":
+        with pytest.raises(ValueError):
+            nsight.analyze.kernel(clock_control=clock_control)(lambda x: x)  # type: ignore[call-overload]
+    else:
+
+        @nsight.analyze.kernel(
+            configs=[(100, 100)],
+            runs=1,
+            output="quiet",
+            clock_control=clock_control,
+        )
+        def clock_control_func(x: int, y: int) -> None:
+            _simple_kernel_impl(x, y, "test_clock_control")
+
+        # Should complete successfully regardless of clock_control value
+        profile_output = clock_control_func()
+        assert profile_output is not None, "ProfileResults should be returned"
+
+
+# ============================================================================
+# Cache control tests
+# ============================================================================
+
+
+@pytest.mark.parametrize("cache_control", ["all", "none", "invalid_value"])  # type: ignore[untyped-decorator]
+def test_parameter_cache_control(
+    cache_control: Literal["all", "none", "invalid_value"],
+) -> None:
+    """Test the cache_control parameter to control cache flush behavior."""
+
+    if cache_control == "invalid_value":
+        with pytest.raises(ValueError):
+            nsight.analyze.kernel(cache_control=cache_control)(lambda x: x)  # type: ignore[call-overload]
+    else:
+
+        @nsight.analyze.kernel(
+            configs=[(100, 100)],
+            runs=1,
+            output="quiet",
+            cache_control=cache_control,
+        )
+        def cache_control_func(x: int, y: int) -> None:
+            _simple_kernel_impl(x, y, "test_cache_control")
+
+        # Should complete successfully regardless of cache_control value
+        profile_output = cache_control_func()
+        assert profile_output is not None, "ProfileResults should be returned"
+
+
+# ============================================================================
+# Thermal control tests
+# ============================================================================
+
+
+@pytest.mark.parametrize("thermal_control", [True, False])  # type: ignore[untyped-decorator]
+def test_parameter_thermal_control(thermal_control: bool) -> None:
+    """Test the thermal_control parameter to control thermal waiting."""
+
+    @nsight.analyze.kernel(
+        configs=[(100, 100)],
+        runs=1,
+        output="quiet",
+        thermal_control=thermal_control,
+    )
+    def thermal_control_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_thermal_control")
+
+    # Should complete successfully regardless of thermal_control value
+    profile_output = thermal_control_func()
+    assert profile_output is not None, "ProfileResults should be returned"
+
+
+# ============================================================================
+# replay_mode parameter tests
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "replay_mode",
+    [
+        "kernel",  # kernel mode should fail with multiple kernels
+        "range",  # range mode should handle multiple kernels
+        "invalid_value",  # range mode should handle invalid values
+    ],
+)  # type: ignore[untyped-decorator]
+def test_parameter_replay_mode(
+    replay_mode: Literal["kernel", "range", "invalid_value"],
+) -> None:
+    """Test that replay_mode parameter correctly handles multiple kernels."""
+
+    if replay_mode == "invalid_value":
+        with pytest.raises(ValueError):
+            nsight.analyze.kernel(replay_mode=replay_mode)(lambda x: x)  # type: ignore[call-overload]
+    else:
+
+        @nsight.analyze.kernel(
+            configs=[(1024,)],
+            runs=1,
+            output="quiet",
+            replay_mode=replay_mode,
+        )
+        def multiple_kernels_replay_test(n: int) -> None:
+            device = Device()
+            device.set_current()
+            s = device.create_stream()
+
+            program = Program(CUDA_KERNEL_CODE, "c++")
+            module = program.compile("ptx")
+            kernel_add = module.get_kernel("vector_add")
+            kernel_mul = module.get_kernel("vector_multiply")
+
+            # Allocate device memory
+            size_bytes = n * 4  # float32
+            d_a = device.allocate(size_bytes)
+            d_b = device.allocate(size_bytes)
+            d_c = device.allocate(size_bytes)
+
+            # Launch multiple kernels in the same annotation
+            with nsight.annotate("test_replay"):
+                block = 256
+                grid = (size_bytes + block - 1) // block
+                config = LaunchConfig(grid=grid, block=block)
+
+                # Launch two different kernels
+                launch(s, config, kernel_add, d_a, d_b, d_c, n)
+                launch(s, config, kernel_mul, d_a, d_b, d_c, n)
+
+            # Synchronize
+            device.sync()
+
+        if replay_mode == "kernel":
+            # replay_mode="kernel" should raise RuntimeError for multiple kernels
+            with pytest.raises(
+                RuntimeError,
+                match="More than one.*kernel.*launched within the test_replay annotation",
+            ):
+                multiple_kernels_replay_test()
+        else:
+            # replay_mode="range" should handle multiple kernels successfully
+            profile_output = multiple_kernels_replay_test()
+            df = profile_output.to_dataframe()
+            assert df["Kernel"][0] == "range"
+
+
+# ============================================================================
+# derive_metric parameter tests
+# ============================================================================
+
+
+def _compute_custom_metric(time_ns: float, x: int, y: int) -> float:
+    """Transform time in nanoseconds to a custom metric based on matrix size."""
+    # Custom formula: operations per second (arbitrary for testing)
+    operations = x * y
+    time_s = time_ns / 1e9
+    return operations / time_s if time_s > 0 else 0.0
+
+
+@pytest.mark.parametrize(
+    "derive_metric_func,expected_name",
+    [
+        (_compute_custom_metric, "_compute_custom_metric"),
+        (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>"),
+    ],
+)  # type: ignore[untyped-decorator]
+def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) -> None:
+    """Test the derive_metric parameter to transform collected metrics."""
+
+    @nsight.analyze.kernel(
+        configs=[(100, 100), (200, 200)],
+        runs=2,
+        output="quiet",
+        derive_metric=derive_metric_func,
+    )
+    def profiled_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_derive_metric")
+
+    # Run profiling
+    profile_output = profiled_func()
+    assert profile_output is not None, "ProfileResults should be returned"
+
+    # Verify the transformed metric is present
+    df = profile_output.to_dataframe()
+    assert "Transformed" in df.columns, "Transformed column should exist"
+    assert (
+        df["Transformed"].iloc[0] == expected_name
+    ), f"Transformed column should show '{expected_name}'"
+
+    # Verify the metric values are transformed (should be positive numbers)
+    assert "AvgValue" in df.columns, "AvgValue column should exist"
+    assert all(df["AvgValue"] > 0), "All derived metric values should be positive"
+
+    # Verify we have results for both configs
+    assert len(df) == 2, "Should have results for 2 configurations"
+
+
+# ============================================================================
+# output parameter test
+# ============================================================================
+
+
+@pytest.mark.parametrize("output", ["quiet", "progress", "verbose", "invalid_value"])  # type: ignore[untyped-decorator]
+def test_parameter_output(
+    capsys: pytest.CaptureFixture,
+    output: Literal["quiet", "progress", "verbose", "invalid_value"],
+) -> None:
+    if output == "invalid_value":
+        with pytest.raises(
+            ValueError, match="output must be 'quiet', 'progress' or 'verbose'"
+        ):
+            nsight.analyze.kernel(output=output)(lambda x: x)  # type: ignore[call-overload]
+
+    else:
+
+        @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, output=output)
+        def profiled_func(x: int, y: int) -> None:
+            _simple_kernel_impl(x, y, "test_parameter_output")
+
+        # Run profiling
+        profile_output = profiled_func()
+        assert profile_output is not None, "ProfileResults should be returned"
+
+        # Check output
+        captured = capsys.readouterr()
+        if output == "quiet":
+            assert len(captured.out) == 0, "stdout should be empty for output='quiet'"
+
+        # TODO:"progress" and "verbose" modes
+
+
+# ============================================================================
+# metric parameter test
+# ============================================================================
+
+
+@pytest.mark.parametrize("metric", ["invalid_value", "sm__warps_launched.sum"])  # type: ignore[untyped-decorator]
+def test_parameter_metric(metric: str) -> None:
+
+    @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metric=metric)
+    def profiled_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_parameter_metric")
+
+    # Run profiling
+    if metric == "invalid_value":
+        with pytest.raises(
+            exceptions.ProfilerException,
+            match=f"Invalid value '{metric}' for 'metric' parameter for nsight.analyze.kernel()",
+        ):
+            profiled_func()
+    else:
+        profile_output = profiled_func()
+        df = profile_output.to_dataframe()
+
+        # Checking if the dataframe has the right metric name
+        assert (
+            df["Metric"] == metric
+        ).all(), f"Invalid metric name {df.loc[df['Metric'] != metric, 'Metric'].iloc[0]} found in output dataframe"
+
+        # Checking if the metric values are valid
+        assert (
+            df["AvgValue"].notna() & df["AvgValue"] > 0
+        ).all(), f"Invalid AvgValue for metric {metric}"

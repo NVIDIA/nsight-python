@@ -73,7 +73,7 @@ def test_launch_ncu_falls_back_without_ncu(mock_run: MagicMock) -> None:
 
 
 # Optional: Add helpers if you want to cleanly test env vars or command strings
-@pytest.fixture(autouse=True)  # type: ignore[misc]
+@pytest.fixture(autouse=True)  # type: ignore[untyped-decorator]
 def patch_helpers(monkeypatch: Any) -> None:
     class Matcher(str):
         def __eq__(self, other: object) -> bool:

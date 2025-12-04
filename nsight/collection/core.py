@@ -100,7 +100,7 @@ def _sanitize_configs(
     sig = inspect.signature(func)
     expected_arg_count = len(sig.parameters)
     if expected_arg_count == 1:
-        normalized_configs = []
+        normalized_configs: list[Sequence[Any]] = []
         for config in configs:
             if isinstance(config, str) or not isinstance(config, Sequence):
                 normalized_configs.append((config,))

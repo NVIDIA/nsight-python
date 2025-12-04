@@ -98,3 +98,22 @@ format = [
    "black .",
    "isort .",
 ]
+
+[tool.hatch.envs.test]
+dependencies = [
+  "pytest",
+  "pytest-cov",
+]
+system-packages = true
+[tool.hatch.envs.test.scripts]
+run = [
+  "python -m pytest -v --junitxml=report.xml {args}",
+]
+
+[tool.hatch.envs.test_cu12]
+features = ["cu12"]
+template = "test"
+
+[tool.hatch.envs.test_cu13]
+features = ["cu13"]
+template = "test"
