@@ -10,7 +10,7 @@ import os
 import threading
 import time
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from typing import Any
 
 import pandas as pd
@@ -21,8 +21,8 @@ from nsight import annotation, exceptions, thermovision, transformation, utils
 def _sanitize_configs(
     func: Callable[..., Any],
     *args: Any,
-    configs: Sequence[Sequence[Any]] | None = None,
-    decorator_configs: Sequence[Sequence[Any]] | None = None,
+    configs: Iterable[Any] | None = None,
+    decorator_configs: Iterable[Any] | None = None,
     **kwargs: Any,
 ) -> list[tuple[Any, ...]]:
     """
@@ -39,8 +39,8 @@ def _sanitize_configs(
     Args:
         func: The function being decorated.
         *args: Positional arguments that may contain configuration data.
-        configs: A list of configurations provided at runtime.
-        decorator_configs: A list of configurations provided
+        configs: An iterable of configurations provided at runtime.
+        decorator_configs: An iterable of configurations provided
             at decoration time.
         **kwargs: Keyword arguments that may contain additional configuration data.
 
@@ -92,44 +92,47 @@ def _sanitize_configs(
             raise exceptions.ProfilerException(
                 "You have provided configs at decoration time and at runtime. Provide configs at decoration time or at runtime."
             )
-        assert isinstance(configs, list), f"configs must be a list, got {type(configs)}"
 
-    # Validate that all configs have the same number of arguments
-    if len(configs) == 0:
-        raise exceptions.ProfilerException("configs list cannot be empty")
+    assert isinstance(
+        configs, Iterable
+    ), f"configs must be an iterable, got {type(configs)}"
 
-    # If function takes exactly one argument, allow scalar configs
-    sig = inspect.signature(func)
-    expected_arg_count = len(sig.parameters)
-    if expected_arg_count == 1:
-        normalized_configs: list[Sequence[Any]] = []
-        for config in configs:
-            if isinstance(config, str) or not isinstance(config, Sequence):
-                normalized_configs.append((config,))
-            else:
-                normalized_configs.append(config)
-        configs = normalized_configs
-    config_lengths = [len(config) for config in configs]
-    if not all(length == config_lengths[0] for length in config_lengths):
-        raise exceptions.ProfilerException(
-            f"All configs must have the same number of arguments. Found lengths: {config_lengths}"
-        )
-    first_config_arg_count = config_lengths[0]
+    if isinstance(configs, Collection):
+        # Validate that all configs have the same number of arguments
+        if len(configs) == 0:
+            raise exceptions.ProfilerException("configs cannot be empty")
 
-    # Validate that the number of args matches the number of function parameters
-    sig = inspect.signature(func)
-    expected_arg_count = len(sig.parameters)
-    if first_config_arg_count != expected_arg_count:
-        raise exceptions.ProfilerException(
-            f"Configs have {first_config_arg_count} arguments, but function expects {expected_arg_count}"
-        )
+        # If function takes exactly one argument, allow scalar configs
+        sig = inspect.signature(func)
+        expected_arg_count = len(sig.parameters)
+        if expected_arg_count == 1:
+            normalized_configs: list[Sequence[Any]] = []
+            for config in configs:
+                if utils.is_scalar(config):
+                    normalized_configs.append((config,))
+                else:
+                    normalized_configs.append(config)
+            configs = normalized_configs
+
+        config_lengths = [len(config) for config in configs]
+        if not all(length == config_lengths[0] for length in config_lengths):
+            raise exceptions.ProfilerException(
+                f"All configs must have the same number of arguments. Found lengths: {config_lengths}"
+            )
+        first_config_arg_count = config_lengths[0]
+
+        # Validate that the number of args matches the number of function parameters
+        if first_config_arg_count != expected_arg_count:
+            raise exceptions.ProfilerException(
+                f"Configs have {first_config_arg_count} arguments, but function expects {expected_arg_count}"
+            )
 
     return configs  # type: ignore[return-value]
 
 
 def run_profile_session(
     func: Callable[..., None],
-    configs: Sequence[Sequence[Any]],
+    configs: Iterable[Sequence[Any]],
     runs: int,
     output_progress: bool,
     output_detailed: bool,
@@ -143,8 +146,13 @@ def run_profile_session(
     if thermal_control:
         thermovision_initialized = thermovision.init()
 
-    total_configs = len(configs)
-    total_runs = total_configs * runs  # Total runs executed
+    if isinstance(configs, Collection):
+        total_configs = len(configs)
+        total_runs = total_configs * runs
+    else:
+        total_configs = None
+        total_runs = None
+
     curr_config = 0
     curr_run = 0
     total_time: float = 0
@@ -154,8 +162,30 @@ def run_profile_session(
     # overwrite flag: we do not overwrite when output mode is detailed
     overwrite_output = not output_detailed
     show_return_type_warning = False
+    config_lengths: list[int] = list()
 
     for c in configs:
+        expected_arg_count = len(inspect.signature(func).parameters)
+
+        # Handle scalar values
+        if expected_arg_count == 1:
+            if utils.is_scalar(c):
+                c = (c,)
+
+        # Check if func supports the input configs
+        if expected_arg_count != len(c):
+            raise exceptions.ProfilerException(
+                f"Function '{func.__name__}' does not support the input configuration"
+            )
+
+        config_lengths.append(len(c))
+
+        if config_lengths[0] != len(c):
+            config_lengths.append(len(c))
+            raise exceptions.ProfilerException(
+                f"All configs must have the same number of arguments. Found lengths: {list(set(config_lengths))}"
+            )
+
         curr_config += 1
 
         if output_progress:
@@ -167,12 +197,6 @@ def run_profile_session(
             if thermal_control:
                 if thermovision_initialized:
                     thermovision.throttle_guard()
-
-            # Check if func supports the input configs
-            if len(inspect.signature(func).parameters) != len(c):
-                raise exceptions.ProfilerException(
-                    f"Function '{func.__name__}' does not support the input configuration"
-                )
 
             # Clear active annotations before each run
             annotation.clear_active_annotations()
@@ -191,9 +215,9 @@ def run_profile_session(
 
             # Update time estimates every half second
             if time.time() - progress_time > 0.5:
-                if output_progress:
+                if output_progress and isinstance(configs, Collection):
                     utils.print_progress_bar(
-                        total_runs,
+                        total_runs,  # type: ignore[arg-type]
                         curr_run,
                         bar_length,
                         avg_time_per_run,
@@ -202,9 +226,9 @@ def run_profile_session(
                 progress_time = time.time()
 
     # Update progress bar at end so it shows 100%
-    if output_progress:
+    if output_progress and isinstance(configs, Collection):
         utils.print_progress_bar(
-            total_runs,
+            total_runs,  # type: ignore[arg-type]
             curr_run,
             bar_length,
             avg_time_per_run,
@@ -228,13 +252,13 @@ class ProfileSettings:
     Class to hold profile settings for Nsight Python.
     """
 
-    configs: Sequence[Sequence[Any]] | None
+    configs: Iterable[Any] | None
     """
-    A list of configurations to run the
-    function with. Each configuration is a tuple of arguments for the
-    decorated function. Nsight Python invokes the decorated function
-    ``len(configs) * runs`` times. If the configs are not provided at
-    decoration time, they must be provided when calling the decorated function.
+    An iterable  of configurations to run the function with.
+    Each configuration can either be a sequence of arguments or
+    if the decorated function takes only one argument, can also
+    be a scalar value. If the configs are not provided at decoration
+    time, they must be provided when calling the decorated function.
     """
 
     runs: int
@@ -334,7 +358,7 @@ class NsightCollector(abc.ABC):
     def collect(
         self,
         func: Callable[..., Any],
-        configs: Sequence[Sequence[Any]],
+        configs: Iterable[Any],
         settings: ProfileSettings,
     ) -> pd.DataFrame | None:
         """
@@ -342,7 +366,7 @@ class NsightCollector(abc.ABC):
 
         Args:
             func: The function to be profiled.
-            configs: List of configurations for profiling.
+            configs: iterable of configurations for profiling.
             settings: Settings for profiling.
 
         Returns:
@@ -384,7 +408,9 @@ class NsightProfiler:
 
         @functools.wraps(func)
         def wrapper(
-            *args: Any, configs: Sequence[Sequence[Any]] | None = None, **kwargs: Any
+            *args: Any,
+            configs: Iterable[Any] | None = None,
+            **kwargs: Any,
         ) -> ProfileResults | None:
 
             tag = f"{func.__name__}-{func._nspy_ncu_run_id}"  # type: ignore[attr-defined]

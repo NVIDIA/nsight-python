@@ -12,7 +12,7 @@ Nsight Python annotations.
 import os
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from typing import Any, Literal
 
 import pandas as pd
@@ -185,7 +185,7 @@ class NCUCollector(core.NsightCollector):
     def collect(
         self,
         func: Callable[..., None],
-        configs: Sequence[Sequence[Any]],
+        configs: Iterable[Sequence[Any]],
         settings: core.ProfileSettings,
     ) -> pd.DataFrame | None:
         """
@@ -193,7 +193,7 @@ class NCUCollector(core.NsightCollector):
 
         Args:
             func: The function to profile.
-            configs: List of configurations to run the function with.
+            configs: iterable of configurations to run the function with.
             settings: Profiling settings.
 
         Returns:
@@ -251,7 +251,7 @@ class NCUCollector(core.NsightCollector):
             if settings.output_progress:
                 utils.print_header(
                     f"Profiling {name}",
-                    f"{len(configs)} configurations, {settings.runs} runs each",
+                    f"{len(configs) if isinstance(configs, Collection) else 'Unknown number of'} configurations, {settings.runs} runs each",
                 )
 
             core.run_profile_session(

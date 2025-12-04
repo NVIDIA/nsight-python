@@ -5,7 +5,7 @@ import contextlib
 import functools
 import os
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Literal, overload
 
 import matplotlib
@@ -27,7 +27,7 @@ def kernel(
 def kernel(
     _func: None = None,
     *,
-    configs: Sequence[Sequence[Any]] | None = None,
+    configs: Iterable[Any] | None = None,
     runs: int = 1,
     derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
@@ -48,7 +48,7 @@ def kernel(
 def kernel(
     _func: Callable[..., None] | None = None,
     *,
-    configs: Sequence[Sequence[Any]] | None = None,
+    configs: Iterable[Any] | None = None,
     runs: int = 1,
     derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
@@ -80,15 +80,22 @@ def kernel(
 
     Where:
         - ``*args``: Original function arguments (when providing a single config)
-        - ``configs``: Optional list of configurations (overrides decorator-time configs)
+        - ``configs``: Optional iterable of configurations (overrides decorator-time configs)
         - ``**kwargs``: Original function keyword arguments
         - Returns ``ProfileResults`` object containing profiling data
 
 
     Parameters:
-        configs:
-            A sequence of configurations to run the function with. Each configuration is a tuple of arguments for the decorated function.
-            Nsight Python invokes the decorated function ``len(configs) * runs`` times.
+        configs: An iterable of configurations to run the function with. Each configuration can be either:
+
+            - A sequence of arguments to pass to the decorated function:
+
+                   configs = [ [1, 2], [3, 4], ]
+
+            - If the decorated function takes only one argument, it can be a scalar value:
+
+                   configs = [1, 2, 3, 4]
+
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
         runs:  Number of times each configuration should be executed.
         derive_metric:

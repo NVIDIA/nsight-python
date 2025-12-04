@@ -25,6 +25,7 @@ import ncu_report
 import pandas as pd
 
 from nsight import exceptions, utils
+from nsight.utils import is_scalar
 
 
 def extract_ncu_action_data(action: Any, metric: str) -> utils.NCUActionData:
@@ -143,7 +144,11 @@ def extract_df_from_report(
         if output_progress:
             print(f"Extracting {annotation} profiling data")
 
-        configs_repeated = [config for config in configs for _ in range(iterations)]
+        configs_repeated = [
+            (config,) if is_scalar(config) else config
+            for config in configs
+            for _ in range(iterations)
+        ]
 
         if len(annotation_data) == 0:
             raise RuntimeError("No kernels were profiled")

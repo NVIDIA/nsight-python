@@ -8,6 +8,7 @@ Test suite for Nsight Python profiler functionality.
 import os
 import shutil
 import tempfile
+from collections.abc import Generator
 from typing import Any, Literal
 
 import pytest
@@ -308,6 +309,94 @@ def test_no_args_function_with_derive_metric() -> None:
 
     # Verify runs parameter was respected
     assert df["NumRuns"].iloc[0] == 2, f"Expected 2 runs, got {df['NumRuns'].iloc[0]}"
+
+
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("config_type", ["decoration", "call_time"])  # type: ignore[untyped-decorator]
+def test_config_non_sized_iterables(config_type: str) -> None:
+    """Test for config iterables which do not implement __len__()"""
+
+    def generate_config() -> Generator[tuple[int, int]]:
+        for i in range(1, 6):
+            yield i, i + 1
+
+    decorator_configs = generate_config() if config_type == "decoration" else None
+    call_time_configs = generate_config() if config_type == "call_time" else None
+
+    @nsight.analyze.kernel(configs=decorator_configs)
+    def non_sized_iterables(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, annotation="non_sized_iterables")
+
+    non_sized_iterables(configs=call_time_configs)
+
+
+# ----------------------------------------------------------------------------
+
+
+def generate_config() -> Generator[int]:
+    for i in range(1, 6):
+        yield i
+
+
+@pytest.mark.parametrize(
+    "configs, size_of_each_config",
+    [
+        ([(100,), 200, (300,)], 1),
+        (generate_config(), None),
+        (range(1, 4), None),
+        ([(100, 200), 200, (300, 400)], 2),
+    ],
+)  # type: ignore[untyped-decorator]
+def test_configs_with_scalar_values(
+    configs: list[list[int] | int] | Generator[int] | range,
+    size_of_each_config: int | None,
+) -> None:
+
+    @nsight.analyze.kernel(configs=configs)
+    def configs_with_scalar_values(n: int) -> None:
+        _simple_kernel_impl(n, n)
+
+    if size_of_each_config == 1:
+        result = configs_with_scalar_values()
+        df = result.to_dataframe()
+        # Check if the configs are correct
+        assert df["n"].to_list() == [100, 200, 300]
+
+    elif size_of_each_config == 2:
+        with pytest.raises(
+            exceptions.ProfilerException,
+            match="All configs must have the same number of arguments. Found lengths",
+        ):
+            configs_with_scalar_values()
+    else:
+        if isinstance(configs, Generator):
+            # Define a different function to avoid issues arising from script relaunch
+            @nsight.analyze.kernel(configs=configs)
+            def configs_with_scalar_values_generators(n: int) -> None:
+                _simple_kernel_impl(n, n)
+
+            result = configs_with_scalar_values_generators()
+            df = result.to_dataframe()
+
+            # Check if the configs are correct
+            assert df["n"].to_list() == [1, 2, 3, 4, 5]
+
+        elif isinstance(configs, range):
+            # Define a different function to avoid issues arising from script relaunch
+            @nsight.analyze.kernel(configs=configs)
+            def configs_with_scalar_values_range(n: int) -> None:
+                _simple_kernel_impl(n, n)
+
+            result = configs_with_scalar_values_range()
+            df = result.to_dataframe()
+
+            # Check if the configs are correct
+            assert df["n"].to_list() == [1, 2, 3]
+
+
+# ----------------------------------------------------------------------------
 
 
 # ============================================================================

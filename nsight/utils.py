@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import islice
 from typing import Any, Iterator
@@ -198,7 +199,7 @@ def print_progress_bar(
 
 
 def print_config(
-    total_configs: int, curr_config: int, c: Any, overwrite_output: bool
+    total_configs: int | None, curr_config: int, c: Any, overwrite_output: bool
 ) -> None:
     """
     Prints the current configuration being profiled.
@@ -211,16 +212,19 @@ def print_config(
             - **True**: The configuration is updated in-place
             - **False**: Each configuration is printed on a new line
     """
+    config_string = (
+        f"{curr_config}/{total_configs}"
+        if total_configs is not None
+        else f"{curr_config}"
+    )
     if overwrite_output:
         sys.stdout.write("\033[2F")  # Move cursor up two lines
         sys.stdout.write("\033[2K\r")  # Clear line
-        sys.stdout.write(
-            f"Config {curr_config}/{total_configs}: {str(list(map(str, c)))}\n\n"
-        )
+        sys.stdout.write(f"Config {config_string}: {str(list(map(str, c)))}\n\n")
         sys.stdout.flush()
 
     else:
-        print_header(f"Config {curr_config}/{total_configs}: {str(list(map(str, c)))}")
+        print_header(f"Config {config_string}: {str(list(map(str, c)))}")
 
 
 def batched(iterable: Any, n: int) -> Iterator[tuple[Any, ...]]:
@@ -350,3 +354,8 @@ def find_external_stacklevel() -> int:
 
     # Fallback: if all frames are inside the package, use the topmost one
     return 1
+
+
+def is_scalar(config: Any) -> bool:
+    """Return True if x is a scalar (not a sequence)."""
+    return isinstance(config, str) or not isinstance(config, Sequence)
