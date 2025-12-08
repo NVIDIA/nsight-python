@@ -15,7 +15,7 @@ jobs:
           pip install hatch
           hatch run lint:check
 
-  undeployed-docs:
+  build-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
