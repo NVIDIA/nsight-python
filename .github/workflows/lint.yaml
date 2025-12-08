@@ -14,3 +14,11 @@ jobs:
       - run: |
           pip install hatch
           hatch run lint:check
+
+  undeployed-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          pip install hatch
+          hatch run docs:build
