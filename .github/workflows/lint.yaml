@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - "main"
-      - "aljoshi/*" #TODO: Remove once PR is merged
 
 jobs:
   lint:
