@@ -1,0 +1,17 @@
+name: "CI"
+
+on:
+  pull_request:
+    types: [opened, reopened]
+  push:
+    branches:
+      - "main"
+      - "aljoshi/*" #TODO: Remove once PR is merged
+
+jobs:
+  lint:
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          pip install hatch
+          hatch run lint:check
