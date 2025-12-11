@@ -39,6 +39,7 @@ jobs:
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
-      - run: |
+      - name: "Running Tests" 
+        run: |
           pip install hatch
           hatch run test_cu13:run
