@@ -40,9 +40,6 @@ jobs:
       options: --gpus all
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
       - run: |
           pip install hatch
           hatch run test_cu13:run
