@@ -35,6 +35,9 @@ jobs:
 
   test_linux_amd64_gpu_h100_latest:
     runs-on: linux-amd64-gpu-h100-latest-1
+    container:
+      image: nvcr.io/nvidia/pytorch:25.09-py3 
+      options: --gpus all
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
