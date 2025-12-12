@@ -274,7 +274,7 @@ def test_no_args_vs_with_args_dataframe_comparison() -> None:
 # ----------------------------------------------------------------------------
 
 
-def test_no_args_function_with_derive_metrics() -> None:
+def test_no_args_function_with_derive_metric() -> None:
     """Test that derive_metric works with functions that have no arguments."""
 
     # Define a derive_metric function that only takes the metric values
