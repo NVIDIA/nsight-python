@@ -68,7 +68,7 @@ def main() -> None:
     print("  ✗ @nsight.analyze.plot decorator will RAISE AN ERROR")
     print("\nWhy? @plot can only visualize one metric at a time.")
     print("Tip: Use separate @kernel functions for each metric or")
-    print("     use 'derive_metrics' to compute custom values.")
+    print("     use 'derive_metric' to compute custom values.")
 
 
 if __name__ == "__main__":

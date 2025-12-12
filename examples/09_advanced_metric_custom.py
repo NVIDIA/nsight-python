@@ -8,7 +8,7 @@ Example 9: Advanced Custom Metrics from Multiple Metrics
 This example shows how to compute custom metrics from multiple metrics.
 
 New concepts:
-- Using `derive_metrics` to compute custom values from multiple metrics
+- Using `derive_metric` to compute custom values from multiple metrics
 """
 
 import torch
@@ -59,7 +59,7 @@ def compute_avg_insts(
 @nsight.analyze.kernel(
     configs=sizes,
     runs=10,
-    derive_metrics=compute_avg_insts,  # Use custom metric
+    derive_metric=compute_avg_insts,  # Use custom metric
     metrics=[
         "smsp__sass_inst_executed_op_shared_ld.sum",
         "smsp__sass_inst_executed_op_shared_st.sum",

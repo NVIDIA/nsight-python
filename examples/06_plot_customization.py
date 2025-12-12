@@ -35,7 +35,7 @@ def compute_tflops(time_ns: float, n: int) -> float:
     plot_type="bar",  # Use bar chart instead of line plot
     annotate_points=True,
 )
-@nsight.analyze.kernel(configs=sizes, runs=10, derive_metrics=compute_tflops)
+@nsight.analyze.kernel(configs=sizes, runs=10, derive_metric=compute_tflops)
 def benchmark_bar_chart(n: int) -> None:
     a = torch.randn(n, n, device="cuda")
     b = torch.randn(n, n, device="cuda")
@@ -70,7 +70,7 @@ def custom_style(fig: Any) -> None:
     filename="06_custom_plot.png",
     plot_callback=custom_style,  # Apply custom styling
 )
-@nsight.analyze.kernel(configs=sizes, runs=10, derive_metrics=compute_tflops)
+@nsight.analyze.kernel(configs=sizes, runs=10, derive_metric=compute_tflops)
 def benchmark_custom_plot(n: int) -> None:
     a = torch.randn(n, n, device="cuda")
     b = torch.randn(n, n, device="cuda")

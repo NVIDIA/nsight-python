@@ -8,7 +8,7 @@ Example 3: Custom Metrics (TFLOPs)
 This example shows how to compute custom metrics from timing data.
 
 New concepts:
-- Using `derive_metrics` to compute custom values (e.g., TFLOPs)
+- Using `derive_metric` to compute custom values (e.g., TFLOPs)
 - Customizing plot labels with `ylabel`
 - The `annotate_points` parameter to show values on the plot
 """
@@ -55,7 +55,7 @@ def compute_tflops(time_ns: float, n: int) -> float:
     annotate_points=True,  # Show values on the plot
 )
 @nsight.analyze.kernel(
-    configs=sizes, runs=10, derive_metrics=compute_tflops  # Use custom metric
+    configs=sizes, runs=10, derive_metric=compute_tflops  # Use custom metric
 )
 def benchmark_tflops(n: int) -> None:
     """

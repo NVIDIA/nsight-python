@@ -275,7 +275,7 @@ class ProfileSettings:
     Will display a progress bar, detailed output for each config along with the profiler logs
     """
 
-    derive_metrics: Callable[..., float] | None
+    derive_metric: Callable[..., float] | None
     """
     A function to transform the collected metrics.
     This can be used to compute derived metrics like TFLOPs that cannot
@@ -344,7 +344,7 @@ class ProfileResults:
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
                 - ``Metric``: The metrics being collected
-                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metrics``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name

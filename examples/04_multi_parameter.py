@@ -53,7 +53,7 @@ def compute_tflops(time_ns: float, *conf: Any) -> float:
     ylabel="Performance (TFLOPs/s)",
     annotate_points=True,
 )
-@nsight.analyze.kernel(configs=configs, runs=10, derive_metrics=compute_tflops)
+@nsight.analyze.kernel(configs=configs, runs=10, derive_metric=compute_tflops)
 def benchmark_multi_param(
     n: int, dtype: torch.dtype
 ) -> None:  # Function now takes multiple parameters

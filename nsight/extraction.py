@@ -11,7 +11,7 @@ Functions:
     extract_ncu_action_data(action, metrics):
         Extracts performance data for a specific kernel action from an NVIDIA Nsight Compute report.
 
-    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metrics, ignore_kernel_list, output_progress, combine_kernel_metrics=None):
+    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, output_progress, combine_kernel_metrics=None):
         Processes the full NVIDIA Nsight Compute report and returns a pandas DataFrame containing performance metrics.
 """
 
@@ -69,7 +69,7 @@ def extract_df_from_report(
     configs: List[Tuple[Any, ...]],
     iterations: int,
     func: Callable[..., Any],
-    derive_metrics: Callable[..., Any] | None,
+    derive_metric: Callable[..., Any] | None,
     ignore_kernel_list: List[str] | None,
     output_progress: bool,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
@@ -83,7 +83,7 @@ def extract_df_from_report(
         configs: Configuration settings used during profiling runs.
         iterations: Number of times each configuration was run.
         func: Function representing the kernel launch with parameter signature.
-        derive_metrics: Function to transform the raw metric values with config values.
+        derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
         verbose: Toggles the printing of extraction progress.
@@ -205,12 +205,12 @@ def extract_df_from_report(
 
             # evaluate the measured metrics
             values = data.values
-            if derive_metrics is not None:
-                derived_metrics: float | int | None = (
-                    None if values is None else derive_metrics(*values, *conf)
+            if derive_metric is not None:
+                derived_metric: float | int | None = (
+                    None if values is None else derive_metric(*values, *conf)
                 )
-                values = derived_metrics  # type: ignore[assignment]
-                derive_metric_name = derive_metrics.__name__
+                values = derived_metric  # type: ignore[assignment]
+                derive_metric_name = derive_metric.__name__
                 all_transformed_metrics.append(derive_metric_name)
             else:
                 all_transformed_metrics.append(False)

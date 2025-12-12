@@ -44,7 +44,7 @@ def compute_tflops(time_ns: float, *conf: Any) -> float:
     col_panels=["transpose"],  # Create column for each transpose setting
     annotate_points=True,
 )
-@nsight.analyze.kernel(configs=configs, runs=10, derive_metrics=compute_tflops)
+@nsight.analyze.kernel(configs=configs, runs=10, derive_metric=compute_tflops)
 def benchmark_with_subplots(n: int, dtype: torch.dtype, transpose: bool) -> None:
     """
     Benchmark with subplots organized by dtype and transpose.

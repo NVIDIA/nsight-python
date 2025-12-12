@@ -18,7 +18,7 @@ def get_app_args() -> argparse.Namespace:
         description="Test with command line options to test parameters for nsight.annotate(), nsight.analyze.kernel() and nsight.analyze.plot()."
     )
     # nsight.analyze.kernel() parameters
-    # TBD no command line arguments yet for: configs, derive_metrics, ignore_kernel_list, combine_kernel_metrics
+    # TBD no command line arguments yet for: configs, derive_metric, ignore_kernel_list, combine_kernel_metrics
     parser.add_argument(
         "--metrics", "-m", default=["dram__bytes.sum.per_second"], help="Metric name"
     )

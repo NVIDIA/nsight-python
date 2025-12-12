@@ -275,15 +275,15 @@ def test_no_args_vs_with_args_dataframe_comparison() -> None:
 
 
 def test_no_args_function_with_derive_metrics() -> None:
-    """Test that derive_metrics works with functions that have no arguments."""
+    """Test that derive_metric works with functions that have no arguments."""
 
-    # Define a derive_metrics function that only takes the metric values
+    # Define a derive_metric function that only takes the metric values
     # (no config parameters since the function has no args)
     def custom_metric(time_ns: float) -> float:
         """Convert time to arbitrary custom metric."""
         return time_ns / 1e6  # Convert to milliseconds
 
-    @nsight.analyze.kernel(runs=2, output="quiet", derive_metrics=custom_metric)
+    @nsight.analyze.kernel(runs=2, output="quiet", derive_metric=custom_metric)
     def no_args_with_transform() -> None:
         a = torch.randn(128, 128, device="cuda")
         b = torch.randn(128, 128, device="cuda")
@@ -851,7 +851,7 @@ def test_parameter_replay_mode(
 
 
 # ============================================================================
-# derive_metrics parameter tests
+# derive_metric parameter tests
 # ============================================================================
 
 
@@ -871,13 +871,13 @@ def _compute_custom_metric(time_ns: float, x: int, y: int) -> float:
     ],
 )  # type: ignore[untyped-decorator]
 def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) -> None:
-    """Test the derive_metrics parameter to transform collected metrics."""
+    """Test the derive_metric parameter to transform collected metrics."""
 
     @nsight.analyze.kernel(
         configs=[(100, 100), (200, 200)],
         runs=2,
         output="quiet",
-        derive_metrics=derive_metric_func,
+        derive_metric=derive_metric_func,
     )
     def profiled_func(x: int, y: int) -> None:
         _simple_kernel_impl(x, y, "test_derive_metric")

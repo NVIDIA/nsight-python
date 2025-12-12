@@ -31,7 +31,7 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metrics: Callable[..., float] | None = None,
+    derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -52,7 +52,7 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metrics: Callable[..., float] | None = None,
+    derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -100,12 +100,12 @@ def kernel(
 
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
         runs:  Number of times each configuration should be executed.
-        derive_metrics:
+        derive_metric:
             A function to transform the collected metrics.
             This can be used to compute derived metrics like TFLOPs that cannot
             be captured by ncu directly. The function takes the metric values and
             the arguments of the profile-decorated function and returns the new
-            metrics. See the examples for concrete use cases.
+            metric. See the examples for concrete use cases.
         normalize_against:
             Annotation name to normalize metrics against.
             This is useful to compute relative metrics like speedup.
@@ -171,7 +171,7 @@ def kernel(
                 - ``Annotation``: Name of the annotated region being profiled
                 - ``Value``: Raw metric values collected by the profiler
                 - ``Metric``: The metrics being collected (e.g., ``gpu__time_duration.sum``)
-                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metrics``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -193,7 +193,7 @@ def kernel(
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
                 - ``Metric``: The metrics being collected
-                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metrics``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -227,7 +227,7 @@ def kernel(
             runs=runs,
             output_progress=output_progress,
             output_detailed=output_detailed,
-            derive_metrics=derive_metrics,
+            derive_metric=derive_metric,
             normalize_against=normalize_against,
             thermal_control=thermal_control,
             output_prefix=prefix,
@@ -308,7 +308,7 @@ def _validate_metric(result: collection.core.ProfileResults) -> None:
             f"Detected columns with arrays/lists/tuples: {', '.join(complex_data_columns)}. "
             "The @nsight.analyze.plot decorator can only visualize scalar values.\n"
             "Solutions:\n"
-            "1. Set derive_metrics to return a single scalar value\n"
+            "1. Set derive_metric to return a single scalar value\n"
             "2. modify @nsight.analyze.kernel decorator to specify only a single metric.\n"
         )
 

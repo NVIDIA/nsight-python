@@ -233,7 +233,7 @@ class NCUCollector(core.NsightCollector):
                 configs,  # type: ignore[arg-type]
                 settings.runs,
                 func,
-                settings.derive_metrics,
+                settings.derive_metric,
                 self.ignore_kernel_list,  # type: ignore[arg-type]
                 settings.output_progress,
                 self.combine_kernel_metrics,

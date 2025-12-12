@@ -48,7 +48,7 @@ Define a Python function that computes metrics like TFLOPs based on runtime and 
    def tflops(t, m, n, k):
        return 2 * m * n * k / (t / 1e9) / 1e12
 
-   @nsight.analyze.kernel(configs=[(1024, 1024, 64)], derive_metrics=tflops)
+   @nsight.analyze.kernel(configs=[(1024, 1024, 64)], derive_metric=tflops)
    def benchmark(m, n, k):
        ...
 

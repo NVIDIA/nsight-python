@@ -63,7 +63,7 @@ This will profile a simple matrix multiplication and generate a plot showing the
   - Visualizing performance across problem sizes
 
 - **`03_custom_metrics.py`** - Computing TFLOPs
-  - Using `derive_metrics` to compute custom metrics
+  - Using `derive_metric` to compute custom metric
   - Understanding the metric function signature
   - Transforming time measurements into performance metrics
 
@@ -95,7 +95,7 @@ This will profile a simple matrix multiplication and generate a plot showing the
   - `@plot` decorator incompatible with multiple metrics
 
 - **`09_advanced_metric_custom.py`** - Computing advanced custom metric
-  - Using `derive_metrics` to compute custom metric from multiple metrics
+  - Using `derive_metric` to compute custom metric from multiple metrics
 
 - **`10_multiple_kernels_combine.py`** - Combining metrics from multiple kernels
   - Using `combine_kernel_metrics` to aggregate metrics from multiple kernels
