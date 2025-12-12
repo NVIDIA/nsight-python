@@ -8,7 +8,7 @@ Example 8: Collecting Multiple Metrics
 This example shows how to collect multiple metrics in a single profiling run.
 
 New concepts:
-- Using the `metrics` parameter to coolect multiple metrics
+- Using the `metrics` parameter to collect multiple metrics
 - `@nsight.analyze.plot` decorator does NOT support multiple metrics now
 """
 
@@ -26,12 +26,12 @@ import nsight
     ],
 )
 def analyze_shared_memory_ops(n: int) -> None:
-    """Analyze oth shared memory load and store SASS instructions
+    """Analyze both shared memory load and store SASS instructions
     for different kernels.
 
-    Note: When multiple metrics are specified (comma-separated),
-    all results are merged into a single ProfileResults object.
-    The 'Metric' column in the DataFrame distinguishes between them.
+    Note: To evaluate multiple metrics, pass them as a sequence
+    (list/tuple). All results are merged into one ProfileResults
+    object, with the 'Metric' column indicating each specific metric.
     """
 
     a = torch.randn(n, n, device="cuda")
@@ -51,7 +51,7 @@ def main() -> None:
     df = results.to_dataframe()
     print(df)
 
-    unique_metrics = df["Metric"].unique()
+    unique_metrics = df["Metric"].unique()[0]
     print(f"\n✓ Collected {len(unique_metrics)} metrics:")
     for metric in unique_metrics:
         print(f"  - {metric}")

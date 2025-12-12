@@ -90,13 +90,12 @@ This will profile a simple matrix multiplication and generate a plot showing the
   - Showing speedup metrics
 
 - **`08_multiple_metrics.py`** - Collecting multiple metrics
-  - Collecting multiple metrics with sequence of strings
+  - Collecting multiple metrics with using a sequence of metric names
   - Merged results with `"Metric"` column in DataFrame
   - `@plot` decorator incompatible with multiple metrics
 
-- **`09_advanced_metric_custom.py`** - Computing advanced metrics
-  - Collecting multiple metrics with sequence of strings
-  - Using `derive_metrics` to compute custom metrics from multiple metrics
+- **`09_advanced_metric_custom.py`** - Computing advanced custom metric
+  - Using `derive_metrics` to compute custom metric from multiple metrics
 
 - **`10_multiple_kernels_combine.py`** - Combining metrics from multiple kernels
   - Using `combine_kernel_metrics` to aggregate metrics from multiple kernels
@@ -105,4 +104,4 @@ This will profile a simple matrix multiplication and generate a plot showing the
 - **`11_output_csv.py`** - Outputting to CSV
   - Using `output_csv` parameter to enable/disable CSV file generation
   - Using `output_prefix` to specify output file location and naming
-  - Read and display generated CSV files
+  - Reading and displaying generated CSV files

@@ -188,7 +188,7 @@ class NCUCollector(core.NsightCollector):
         func: Callable[..., None],
         configs: Iterable[Sequence[Any]],
         settings: core.ProfileSettings,
-    ) -> pd.DataFrame | list[pd.DataFrame] | None:
+    ) -> pd.DataFrame | None:
         """
         Collects profiling data using NVIDIA Nsight Compute.
 
