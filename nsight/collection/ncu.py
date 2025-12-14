@@ -18,6 +18,7 @@ from typing import Any, Literal
 import pandas as pd
 
 from nsight import exceptions, extraction, utils
+from nsight.cache import GlobalNCUProfileCache
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
 
@@ -98,6 +99,7 @@ def launch_ncu(
                 shell=True,
                 check=True,
                 env=env,
+                stdout=subprocess.DEVNULL,
             )
 
             return log_path
@@ -238,15 +240,19 @@ class NCUCollector(core.NsightCollector):
                 settings.output_progress,
                 self.combine_kernel_metrics,
             )
+
+            # Save to cache
+            GlobalNCUProfileCache().save_profile_result(func.__name__, df)
+
             return df
 
         else:
             # If NSPY_NCU_PROFILE is set, just run the function normally
             name = os.environ["NSPY_NCU_PROFILE"]
 
-            # If this is not the function we are profiling, stop
+            # If this is not the function we are profiling, just load from cache
             if func.__name__ != name:
-                return None
+                return GlobalNCUProfileCache().load_profile_result(func.__name__)
 
             if settings.output_progress:
                 utils.print_header(
