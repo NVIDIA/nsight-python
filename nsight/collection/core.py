@@ -436,10 +436,6 @@ class NsightProfiler:
                     self.settings.output_progress,
                 )
 
-                # Explode the dataframe.
-                raw_df = self._explode_dataframe(raw_df)
-                processed = self._explode_dataframe(processed)
-
                 # Save to CSV if enabled
                 if self.settings.output_csv:
                     raw_csv_path = (
@@ -473,42 +469,3 @@ class NsightProfiler:
             return None
 
         return wrapper
-
-    def _explode_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Explode columns with list/tuple/np.ndarray values into multiple rows.
-
-        Two scenarios:
-            1. No derived metrics (all "Transformed" = False):
-                - All columns maybe contain multiple values (lists/arrays).
-                - Use `explode()` to flatten each list element into separate rows.
-            2. With derived metrics:
-                - Metric columns contain either:
-                    a) Single-element lists (from derived metrics) - extract the scalar
-                    b) Scalars (from original metrics) - keep as-is
-                - Only flatten single-element lists to scalars, don't create new rows.
-
-        Args:
-            df: Dataframe to be exploded.
-
-        Returns:
-            Exploded dataframe.
-        """
-        df_explode = None
-        if df["Transformed"].eq(False).all():
-            # 1: No derived metrics - explode all columns with sequences into rows.
-            df_explode = df.apply(pd.Series.explode).reset_index(drop=True)
-        else:
-            # 2: With derived metrics - only explode columns with single-value sequences.
-            df_explode = df.apply(
-                lambda col: (
-                    col.apply(
-                        lambda x: (
-                            x[0]
-                            if isinstance(x, (list, tuple, np.ndarray)) and len(x) == 1
-                            else x
-                        )
-                    )
-                )
-            )
-        return df_explode

@@ -81,7 +81,7 @@ def visualize(
 
     # Build Configuration field excluding variant_fields
     annotation_idx = agg_df.columns.get_loc("AvgValue")
-    func_fields = list(agg_df.columns[1:annotation_idx])
+    func_fields = list(agg_df.columns[3:annotation_idx])
     subplot_fields = row_panels + col_panels  # type: ignore[operator]
     non_panel_fields = [
         field
@@ -202,7 +202,7 @@ def visualize(
                 config_fields = x_keys
             else:
                 annotation_idx = local_df.columns.get_loc("AvgValue")
-                func_fields = list(local_df.columns[1:annotation_idx])
+                func_fields = list(local_df.columns[3:annotation_idx])
                 subplot_fields = row_panels + col_panels  # type: ignore[operator]
                 config_exclude = set(variant_fields or [])
                 config_fields = [

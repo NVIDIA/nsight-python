@@ -16,8 +16,11 @@ import torch
 
 import nsight
 
+sizes = [(2**i,) for i in range(11, 13)]
+
 
 @nsight.analyze.kernel(
+    configs=sizes,
     runs=5,
     # Collect both shared memory load and store SASS instructions
     metrics=[
@@ -36,17 +39,19 @@ def analyze_shared_memory_ops(n: int) -> None:
 
     a = torch.randn(n, n, device="cuda")
     b = torch.randn(n, n, device="cuda")
+    c = torch.randn(2 * n, 2 * n, device="cuda")
+    d = torch.randn(2 * n, 2 * n, device="cuda")
 
     with nsight.annotate("@-operator"):
         _ = a @ b
 
     with nsight.annotate("torch.matmul"):
-        _ = torch.matmul(a, b)
+        _ = torch.matmul(c, d)
 
 
 def main() -> None:
     # Run analysis with multiple metrics
-    results = analyze_shared_memory_ops(1024)
+    results = analyze_shared_memory_ops()
 
     df = results.to_dataframe()
     print(df)
@@ -57,7 +62,7 @@ def main() -> None:
         print(f"  - {metric}")
 
     print("\n✓ Sample data:")
-    print(df[["Annotation", "n", "Metric", "AvgValue"]].head().to_string(index=False))
+    print(df[["Annotation", "n", "Metric", "AvgValue"]].to_string(index=False))
 
     print("\n" + "=" * 60)
     print("IMPORTANT: @plot decorator limitation")
@@ -66,9 +71,9 @@ def main() -> None:
     print("  ✓ All metrics are collected in a single ProfileResults object")
     print("  ✓ DataFrame has 'Metric' column to distinguish them")
     print("  ✗ @nsight.analyze.plot decorator will RAISE AN ERROR")
-    print("\nWhy? @plot can only visualize one metric at a time.")
-    print("Tip: Use separate @kernel functions for each metric or")
-    print("     use 'derive_metric' to compute custom values.")
+    print("    Why? @plot can only visualize one metric at a time.")
+    print("    Tip: Use separate @kernel functions for each metric or use")
+    print("         'derive_metric' to compute custom values.")
 
 
 if __name__ == "__main__":
