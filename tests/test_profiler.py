@@ -1050,7 +1050,7 @@ def test_parameter_metric(metrics: Sequence[str], expected_result: str) -> None:
         # Checking if the dataframe has the right metric name
         assert (
             df["Metric"] == metrics[0]
-        ).all(), f"Invalid metric name {df.loc[df['Metric'] != metrics, 'Metric'].iloc[0]} found in output dataframe"
+        ).all(), f"Invalid metric name {df.loc[df['Metric'] != metrics[0], 'Metric'].iloc[0]} found in output dataframe"
 
         # Checking if the metric values are valid
         assert (
