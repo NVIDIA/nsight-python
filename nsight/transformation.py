@@ -150,7 +150,7 @@ def aggregate_data(
         agg_df = pd.merge(agg_df, normalization_df, on=merge_on)
 
         # Normalize the AvgValue by the values of the normalization annotation
-        agg_df["AvgValue"] = agg_df["AvgValue"] / agg_df["NormalizationValue"]
+        agg_df["AvgValue"] = agg_df["NormalizationValue"] / agg_df["AvgValue"]
 
         # Update the metric name to reflect the normalization
         agg_df["Metric"] = (

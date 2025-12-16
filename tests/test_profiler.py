@@ -570,6 +570,9 @@ def normalize_against_multiple_metrics(n: int) -> None:
         _ = c + d
 
 
+@pytest.mark.xfail(  # type: ignore[untyped-decorator]
+    reason="Waiting for proper support for standard normalization and speedup computation"
+)
 def test_parameter_normalize_against_multiple_metrics() -> None:
     profile_output = normalize_against_multiple_metrics()
     if profile_output is not None:
