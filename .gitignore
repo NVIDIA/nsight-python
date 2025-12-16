@@ -65,3 +65,9 @@ html/
 
 # Test report
 report.xml
+
+# Logs / NCU Reps / PNGs / CSVs
+*.log
+*.ncu-rep
+*.png
+*.csv

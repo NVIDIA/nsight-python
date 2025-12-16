@@ -69,7 +69,8 @@ def benchmark_tflops(n: int) -> None:
 
 
 def main() -> None:
-    benchmark_tflops()
+    result = benchmark_tflops()
+    print(result.to_dataframe())
     print("✓ TFLOPs benchmark complete! Check '03_custom_metrics.png'")
 
 

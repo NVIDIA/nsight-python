@@ -20,7 +20,7 @@ def get_app_args() -> argparse.Namespace:
     # nsight.analyze.kernel() parameters
     # TBD no command line arguments yet for: configs, derive_metric, ignore_kernel_list, combine_kernel_metrics
     parser.add_argument(
-        "--metric", "-m", default="dram__bytes.sum.per_second", help="Metric name"
+        "--metrics", "-m", default=["dram__bytes.sum.per_second"], help="Metric name"
     )
     parser.add_argument("--runs", "-r", type=int, default=10, help="Number of runs")
     parser.add_argument("--replay-mode", "-p", default="kernel", help="Replay mode")
@@ -93,7 +93,7 @@ def main(argv: List[str]) -> None:
     @nsight.analyze.kernel(
         configs=sizes,
         runs=args.runs,
-        metric=args.metric,
+        metrics=args.metrics,
         replay_mode=args.replay_mode,
         normalize_against=args.normalize_against,
         clock_control=args.clock_control,

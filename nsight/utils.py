@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from itertools import islice
 from typing import Any, Iterator
 
+import numpy as np
+from numpy.typing import NDArray
+
 from nsight.exceptions import (
     CUDA_CORE_UNAVAILABLE_MSG,
     MetricErrorType,
     NCUErrorContext,
-    get_metric_error_message,
+    get_metrics_error_message,
 )
 
 # Try to import cuda-core (optional dependency)
@@ -131,7 +134,7 @@ def print_header(*lines: str) -> None:
 @dataclass
 class NCUActionData:
     name: str
-    value: Any
+    values: NDArray[Any] | None
     compute_clock: int
     memory_clock: int
     gpu: str
@@ -149,7 +152,7 @@ class NCUActionData:
             assert lhs.gpu == rhs.gpu
             return NCUActionData(
                 name=f"{lhs.name}|{rhs.name}",
-                value=value_reduce_op(lhs.value, rhs.value),
+                values=value_reduce_op(lhs.values, rhs.values),
                 compute_clock=lhs.compute_clock,
                 memory_clock=lhs.memory_clock,
                 gpu=lhs.gpu,
@@ -318,7 +321,9 @@ def format_ncu_error_message(context: NCUErrorContext) -> str:
 
     if context.errors and INVALID_METRIC_ERROR_HINT in context.errors[0]:
         message_parts.append(
-            get_metric_error_message(context.metric, error_type=MetricErrorType.INVALID)
+            get_metrics_error_message(
+                context.metrics, error_type=MetricErrorType.INVALID
+            )
         )
     else:
         message_parts.append("\n".join(f"- {error}" for error in context.errors))

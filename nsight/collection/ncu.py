@@ -25,7 +25,7 @@ from nsight.exceptions import NCUErrorContext
 def launch_ncu(
     report_path: str,
     name: str,
-    metric: str,
+    metrics: Sequence[str],
     cache_control: Literal["none", "all"],
     clock_control: Literal["none", "base"],
     replay_mode: Literal["kernel", "range"],
@@ -36,7 +36,7 @@ def launch_ncu(
 
     Args:
         report_path: Path to write report file to.
-        metric: Specific metric to collect.
+        metrics: Specific metrics to collect.
         cache_control: Select cache control option
         clock_control: Select clock control option
         replay_mode: Select replay mode option
@@ -74,9 +74,10 @@ def launch_ncu(
     log_path = os.path.splitext(report_path)[0] + ".log"
     log = f"--log-file {log_path}"
     nvtx = f'--nvtx --nvtx-include "regex:{utils.NVTX_DOMAIN}@.+/"'
+    metrics_str = ",".join(metrics)
 
     # Construct the ncu command
-    ncu_command = f"""ncu {log} {cache} {clocks} {replay} {nvtx} --metrics {metric} -f -o {report_path} {sys.executable} {script_path} {script_args}"""
+    ncu_command = f"""ncu {log} {cache} {clocks} {replay} {nvtx} --metrics {metrics_str} -f -o {report_path} {sys.executable} {script_path} {script_args}"""
 
     # Check if ncu is available on the system
     ncu_available = False
@@ -109,7 +110,7 @@ def launch_ncu(
             error_context = NCUErrorContext(
                 errors=error_logs,
                 log_file_path=log_path,
-                metric=metric,
+                metrics=metrics,
             )
 
             error_message = utils.format_ncu_error_message(error_context)
@@ -127,7 +128,7 @@ class NCUCollector(core.NsightCollector):
     NCU collector for Nsight Python.
 
     Args:
-        metric: Metric to collect from
+        metrics: Metrics to collect from
             NVIDIA Nsight Compute. By default we collect kernel runtimes in nanoseconds.
             A list of supported metrics can be found with ``ncu --list-metrics``.
         ignore_kernel_list: List of kernel names to ignore.
@@ -161,7 +162,7 @@ class NCUCollector(core.NsightCollector):
 
     def __init__(
         self,
-        metric: str = "gpu__time_duration.sum",
+        metrics: Sequence[str] = ["gpu__time_duration.sum"],
         ignore_kernel_list: Sequence[str] | None = None,
         combine_kernel_metrics: Callable[[float, float], float] | None = None,
         clock_control: Literal["base", "none"] = "none",
@@ -175,7 +176,7 @@ class NCUCollector(core.NsightCollector):
         if replay_mode not in ("kernel", "range"):
             raise ValueError("replay_mode must be 'kernel', or 'range'")
 
-        self.metric = metric
+        self.metrics = metrics
         self.ignore_kernel_list = ignore_kernel_list or []
         self.combine_kernel_metrics = combine_kernel_metrics
         self.clock_control = clock_control
@@ -210,7 +211,7 @@ class NCUCollector(core.NsightCollector):
             log_path = launch_ncu(
                 report_path,
                 func.__name__,
-                self.metric,
+                self.metrics,
                 self.cache_control,
                 self.clock_control,
                 self.replay_mode,
@@ -226,10 +227,9 @@ class NCUCollector(core.NsightCollector):
                     f"[NSIGHT-PYTHON] Refer to {log_path} for the NVIDIA Nsight Compute CLI logs"
                 )
 
-            # Extract raw data
             df = extraction.extract_df_from_report(
                 report_path,
-                self.metric,
+                self.metrics,
                 configs,  # type: ignore[arg-type]
                 settings.runs,
                 func,
@@ -238,6 +238,7 @@ class NCUCollector(core.NsightCollector):
                 settings.output_progress,
                 self.combine_kernel_metrics,
             )
+
             return df
 
         else:

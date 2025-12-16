@@ -44,13 +44,13 @@ def aggregate_data(
     # Note: When num_args=0, we need an empty list (not all columns via [-0:])
     func_fields = df.columns[-num_args:].tolist() if num_args > 0 else []
 
-    # Function to convert non-sortable columns to strings
+    # Function to convert non-sortable columns to tuples or strings
     def convert_non_sortable_columns(dframe: pd.DataFrame) -> pd.DataFrame:
         for col in dframe.columns:
-            # Try sorting the column to check if it's sortable
             try:
+                # Try sorting the column to check if it's sortable.
                 sorted(dframe[col].dropna())
-            except TypeError:
+            except (TypeError, ValueError):
                 # If sorting fails, convert the column to string
                 dframe[col] = dframe[col].astype(str)
         return dframe
@@ -75,11 +75,14 @@ def aggregate_data(
         ),  # Use min to preserve first occurrence
     }
 
+    # The columns to aggregate except for the function parameters
+    groupby_columns = ["Annotation", "Metric", "Transformed"]
+
     # Add assertion-based unique selection for remaining fields
     remaining_fields = [
         col
         for col in df.columns
-        if col not in ["Value", "Annotation", "_original_order"] + func_fields
+        if col not in [*groupby_columns, "Value", "_original_order"] + func_fields
     ]
 
     for col in remaining_fields:
@@ -102,7 +105,8 @@ def aggregate_data(
             )
 
     # Apply aggregation with named aggregation
-    agg_df = df.groupby(["Annotation"] + func_fields).agg(**named_aggs).reset_index()
+    groupby_df = df.groupby(groupby_columns + func_fields)
+    agg_df = groupby_df.agg(**named_aggs).reset_index()
 
     # Compute 95% confidence intervals
     agg_df["CI95_Lower"] = agg_df["AvgValue"] - 1.96 * (
@@ -127,21 +131,23 @@ def aggregate_data(
 
     do_normalize = normalize_against is not None
     if do_normalize:
-
         assert (
             normalize_against in agg_df["Annotation"].values
         ), f"Annotation '{normalize_against}' not found in data."
 
+        # Columns of normalization dataframe to merge on
+        merge_on = func_fields + ["Metric", "Transformed"]
+
         # Create a DataFrame to hold the normalization values
         normalization_df = agg_df[agg_df["Annotation"] == normalize_against][
-            func_fields + ["AvgValue"]
+            merge_on + ["AvgValue"]
         ]
         normalization_df = normalization_df.rename(
             columns={"AvgValue": "NormalizationValue"}
         )
 
         # Merge with the original DataFrame to apply normalization
-        agg_df = pd.merge(agg_df, normalization_df, on=func_fields)
+        agg_df = pd.merge(agg_df, normalization_df, on=merge_on)
 
         # Normalize the AvgValue by the values of the normalization annotation
         agg_df["AvgValue"] = agg_df["NormalizationValue"] / agg_df["AvgValue"]
@@ -151,18 +157,13 @@ def aggregate_data(
             agg_df["Metric"].astype(str) + f" relative to {normalize_against}"
         )
 
-    # Calculate geometric mean for each annotation
-    geomean_values = {}
-    for annotation in agg_df["Annotation"].unique():
-        annotation_data = agg_df[agg_df["Annotation"] == annotation]
-        valid_values = annotation_data["AvgValue"].dropna()
-        if not valid_values.empty:
-            geomean = np.exp(np.mean(np.log(valid_values)))
-            geomean_values[annotation] = geomean
-        else:
-            geomean_values[annotation] = np.nan
-
-    # Add geomean values to the DataFrame
-    agg_df["Geomean"] = agg_df["Annotation"].map(geomean_values)
+    # Calculate the geometric mean of the AvgValue column
+    agg_df["Geomean"] = agg_df.groupby(groupby_columns)["AvgValue"].transform(
+        lambda x: (
+            np.exp(np.mean(np.log(pd.to_numeric(x.dropna(), errors="coerce"))))
+            if not x.dropna().empty
+            else np.nan
+        )
+    )
 
     return agg_df

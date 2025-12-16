@@ -36,7 +36,9 @@ def benchmark_matmul_sizes(n: int) -> None:
 
 
 def main() -> None:
-    benchmark_matmul_sizes()  # notice no n parameter is passed, it is passed in the configs list instead
+    # notice no n parameter is passed, it is passed in the configs list instead
+    result = benchmark_matmul_sizes()
+    print(result.to_dataframe())
     print("✓ Benchmark complete! Check '02_parameter_sweep.png'")
 
 

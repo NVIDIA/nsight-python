@@ -5,11 +5,13 @@ import contextlib
 import functools
 import os
 import tempfile
+import warnings
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Literal, overload
 
 import matplotlib
 import matplotlib.figure
+import numpy as np
 
 import nsight.collection as collection
 import nsight.visualization as visualization
@@ -32,7 +34,7 @@ def kernel(
     derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
-    metric: str = "gpu__time_duration.sum",
+    metrics: Sequence[str] = ["gpu__time_duration.sum"],
     ignore_kernel_list: Sequence[str] | None = None,
     clock_control: Literal["base", "none"] = "none",
     cache_control: Literal["all", "none"] = "all",
@@ -53,7 +55,7 @@ def kernel(
     derive_metric: Callable[..., float] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
-    metric: str = "gpu__time_duration.sum",
+    metrics: Sequence[str] = ["gpu__time_duration.sum"],
     ignore_kernel_list: Sequence[str] | None = None,
     clock_control: Literal["base", "none"] = "none",
     cache_control: Literal["all", "none"] = "all",
@@ -99,15 +101,22 @@ def kernel(
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
         runs:  Number of times each configuration should be executed.
         derive_metric:
-            A function to transform the collected metric.
+            A function to transform the collected metrics.
             This can be used to compute derived metrics like TFLOPs that cannot
-            be captured by ncu directly. The function takes the metric value and
+            be captured by ncu directly. The function takes the metric values and
             the arguments of the profile-decorated function and returns the new
-            metric. See the examples for concrete use cases.
+            metric. The parameter order requirements for the custom function:
+
+            - First several arguments: Must exactly match the order of metrics declared in the @kernel decorator. These arguments will receive the actual measured values of those metrics.
+            - Remaining arguments: Must exactly match the signature of the decorated function. In other words, the original function's parameters are passed in order.
+
+            See the examples for concrete use cases.
         normalize_against:
             Annotation name to normalize metrics against.
             This is useful to compute relative metrics like speedup.
-        metric: The metric to collect. By default, kernel runtimes in nanoseconds are collected. Default: ``"gpu__time_duration.sum"``. To see the available metrics on your system, use the command: ``ncu --query-metrics``.
+        metrics: The metrics to collect. By default, kernel runtimes in nanoseconds
+            are collected. Default: ``["gpu__time_duration.sum"]``. To see the available
+            metrics on your system, use the command: ``ncu --query-metrics``.
         ignore_kernel_list:
             List of kernel names to ignore. If you call a library within an annotated range context, you might not have precise control over which and how many kernels are being launched.
             If some of these kernels should be ignored in the profile, their names can be provided in this parameter. Default: ``None``
@@ -165,9 +174,9 @@ def kernel(
             **Raw Data CSV** (``profiled_data-<function_name>-<run_id>.csv``): Contains unprocessed profiling data with one row per run per configuration. Columns include:
 
                 - ``Annotation``: Name of the annotated region being profiled
-                - ``Value``: Raw metric value collected by the profiler
-                - ``Metric``: The metric being collected (e.g., ``gpu__time_duration.sum``)
-                - ``Transformed``: Name of the function used to transform the metric (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Value``: Raw metric values collected by the profiler
+                - ``Metric``: The metrics being collected (e.g., ``gpu__time_duration.sum``)
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -179,23 +188,25 @@ def kernel(
 
                 - ``Annotation``: Name of the annotated region being profiled
                 - ``<param_name>``: One column for each parameter of the decorated function
-                - ``AvgValue``: Average metric value across all runs
-                - ``StdDev``: Standard deviation of the metric across runs
-                - ``MinValue``: Minimum metric value observed
-                - ``MaxValue``: Maximum metric value observed
+                - ``AvgValue``: Average metric values across all runs
+                - ``StdDev``: Standard deviation of the metrics across runs
+                - ``MinValue``: Minimum metric values observed
+                - ``MaxValue``: Maximum metric values observed
                 - ``NumRuns``: Number of runs used for aggregation
                 - ``CI95_Lower``: Lower bound of the 95% confidence interval
                 - ``CI95_Upper``: Upper bound of the 95% confidence interval
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
-                - ``Metric``: The metric being collected
-                - ``Transformed``: Name of the function used to transform the metric (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Metric``: The metrics being collected
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
                 - ``ComputeClock``: GPU compute clock frequency
                 - ``MemoryClock``: GPU memory clock frequency
     """
+    # Strip whitespace
+    metrics = [m.strip() for m in metrics]
 
     def _create_profiler() -> collection.core.NsightProfiler:
         """Helper to create the profiler with the given settings."""
@@ -228,7 +239,7 @@ def kernel(
             output_csv=output_csv,
         )
         ncu = collection.ncu.NCUCollector(
-            metric=metric,
+            metrics=metrics,
             ignore_kernel_list=ignore_kernel_list,
             combine_kernel_metrics=combine_kernel_metrics,
             clock_control=clock_control,
@@ -246,6 +257,27 @@ def kernel(
         # _func is the decorated function, so we need to apply the profiler to it
         profiler = _create_profiler()
         return profiler(_func)  # type: ignore[return-value]
+
+
+def _validate_metric(result: collection.core.ProfileResults) -> None:
+    """
+    Check if ProfileResults contains only a single metric.
+
+    Args:
+        result: ProfileResults object
+
+    Raises:
+        ValueError: If multiple metrics are detected
+    """
+    df = result.to_dataframe()
+
+    # Check for multiple metrics in "Metric" column
+    unique_metrics = df["Metric"].unique()
+    if len(unique_metrics) > 1:
+        raise ValueError(
+            f"Cannot visualize {len(unique_metrics)} > 1 metrics with the "
+            "@nsight.analyze.plot decorator."
+        )
 
 
 def plot(
@@ -326,6 +358,9 @@ def plot(
             result = func(*args, **kwargs)
 
             if "NSPY_NCU_PROFILE" not in os.environ:
+                # Check for multiple metrics or complex data structures
+                _validate_metric(result)
+
                 visualization.visualize(
                     result.to_dataframe(),
                     row_panels=row_panels,

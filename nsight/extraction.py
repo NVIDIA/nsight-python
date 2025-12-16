@@ -8,57 +8,103 @@ This module provides functionality to load `.ncu-rep` reports, extract performan
 and transform it into structured pandas DataFrames for further analysis.
 
 Functions:
-    extract_ncu_action_data(action, metric):
+    extract_ncu_action_data(action, metrics):
         Extracts performance data for a specific kernel action from an NVIDIA Nsight Compute report.
 
-    extract_df_from_report(metric, configs, iterations, func, derive_metric, ignore_kernel_list, verbose, combine_kernel_metrics=None):
+    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, output_progress, combine_kernel_metrics=None):
         Processes the full NVIDIA Nsight Compute report and returns a pandas DataFrame containing performance metrics.
 """
 
 import functools
 import inspect
 import socket
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, List, Tuple
 
 import ncu_report
+import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 from nsight import exceptions, utils
 from nsight.utils import is_scalar
 
 
-def extract_ncu_action_data(action: Any, metric: str) -> utils.NCUActionData:
+def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUActionData:
     """
     Extracts performance data from an NVIDIA Nsight Compute kernel action.
 
     Args:
         action: The NVIDIA Nsight Compute action object.
-        metric: The metric name to extract from the action.
+        metrics: The metric names to extract from the action.
 
     Returns:
-        A data container with extracted metric, clock rates, and GPU name.
+        A data container with extracted metrics, clock rates, and GPU name.
     """
-    if metric not in action.metric_names():
-        error_message = exceptions.get_metric_error_message(
-            metric, error_type=exceptions.MetricErrorType.UNSUPPORTED
-        )
-        raise exceptions.ProfilerException(error_message)
+    for metric in metrics:
+        if metric not in action.metric_names():
+            error_message = exceptions.get_metrics_error_message(
+                metric, error_type=exceptions.MetricErrorType.INVALID
+            )
+            raise exceptions.ProfilerException(error_message)
+
+    # Extract values for all metrics.
+    failure = "dummy_kernel_failure" in action.name()
+    all_values = (
+        None if failure else np.array([action[metric].value() for metric in metrics])
+    )
 
     return utils.NCUActionData(
         name=action.name(),
-        value=(
-            None if "dummy_kernel_failure" in action.name() else action[metric].value()
-        ),
+        values=all_values,
         compute_clock=action["device__attribute_clock_rate"].value(),
         memory_clock=action["device__attribute_memory_clock_rate"].value(),
         gpu=action["device__attribute_display_name"].value(),
     )
 
 
+def explode_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Explode columns with list/tuple/np.ndarray values into multiple rows.
+    Two scenarios:
+
+    1. No derived metrics (all "Transformed" = False):
+       - All columns maybe contain multiple values (lists/arrays).
+       - Use `explode()` to flatten each list element into separate rows.
+
+    2. With derived metrics:
+       - Metric columns contain either single-element lists or scalars.
+       - Only flatten single-element lists to scalars, don't create new rows.
+
+    Args:
+        df: Dataframe to be exploded.
+
+    Returns:
+        Exploded dataframe.
+    """
+    df_explode = None
+    if df["Transformed"].eq(False).all():
+        # 1: No derived metrics - explode all columns with sequences into rows.
+        df_explode = df.apply(pd.Series.explode).reset_index(drop=True)
+    else:
+        # 2: With derived metrics - only explode columns with single-value sequences.
+        df_explode = df.apply(
+            lambda col: (
+                col.apply(
+                    lambda x: (
+                        x[0]
+                        if isinstance(x, (list, tuple, np.ndarray)) and len(x) == 1
+                        else x
+                    )
+                )
+            )
+        )
+    return df_explode
+
+
 def extract_df_from_report(
     report_path: str,
-    metric: str,
+    metrics: Sequence[str],
     configs: List[Tuple[Any, ...]],
     iterations: int,
     func: Callable[..., Any],
@@ -72,14 +118,14 @@ def extract_df_from_report(
 
     Args:
         report_path: Path to the report file.
-        metric: The NVIDIA Nsight Compute metric to extract.
+        metrics: The NVIDIA Nsight Compute metrics to extract.
         configs: Configuration settings used during profiling runs.
         iterations: Number of times each configuration was run.
         func: Function representing the kernel launch with parameter signature.
-        derive_metric: Function to transform the raw metric value with config values.
+        derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
-        verbose: Toggles the printing of extraction progress
+        verbose: Toggles the printing of extraction progress.
 
     Returns:
         A DataFrame containing the extracted and transformed performance data.
@@ -91,7 +137,7 @@ def extract_df_from_report(
     if output_progress:
         print("[NSIGHT-PYTHON] Loading profiled data")
     try:
-        report = ncu_report.load_report(report_path)
+        report: ncu_report.IContext = ncu_report.load_report(report_path)
     except FileNotFoundError:
         raise exceptions.ProfilerException(
             "No NVIDIA Nsight Compute report found. Please run nsight-python with `@nsight.analyze.kernel(output='verbose')`"
@@ -99,13 +145,13 @@ def extract_df_from_report(
         )
 
     annotations: List[str] = []
-    values: List[float | None] = []
+    all_values: List[NDArray[Any] | None] = []
     kernel_names: List[str] = []
     gpus: List[str] = []
     compute_clocks: List[int] = []
     memory_clocks: List[int] = []
-    metrics: List[str] = []
-    transformed_metrics: List[str | bool] = []
+    all_metrics: List[Tuple[str, ...]] = []
+    all_transformed_metrics: List[str | bool] = []
     hostnames: List[str] = []
 
     sig = inspect.signature(func)
@@ -118,13 +164,13 @@ def extract_df_from_report(
         print(f"Extracting profiling data")
     profiling_data: dict[str, list[utils.NCUActionData]] = {}
     for range_idx in range(report.num_ranges()):
-        current_range = report.range_by_idx(range_idx)
+        current_range: ncu_report.IRange = report.range_by_idx(range_idx)
         for action_idx in range(current_range.num_actions()):
-            action = current_range.action_by_idx(action_idx)
-            state = action.nvtx_state()
+            action: ncu_report.IAction = current_range.action_by_idx(action_idx)
+            state: ncu_report.INvtxState = action.nvtx_state()
 
             for domain_idx in state.domains():
-                domain = state.domain_by_id(domain_idx)
+                domain: ncu_report.INvtxDomainInfo = state.domain_by_id(domain_idx)
 
                 # ignore actions not in the nsight-python nvtx domain
                 if domain.name() != utils.NVTX_DOMAIN:
@@ -133,8 +179,8 @@ def extract_df_from_report(
                 if ignore_kernel_list and action.name() in ignore_kernel_list:
                     continue
 
-                annotation = domain.push_pop_ranges()[0]
-                data = extract_ncu_action_data(action, metric)
+                annotation: str = domain.push_pop_ranges()[0]
+                data = extract_ncu_action_data(action, metrics)
 
                 if annotation not in profiling_data:
                     profiling_data[annotation] = []
@@ -196,21 +242,23 @@ def extract_df_from_report(
             gpus.append(data.gpu)
             kernel_names.append(data.name)
 
-            # evaluate the measured metric
-            value = data.value
+            # evaluate the measured metrics
+            values = data.values
             if derive_metric is not None:
-                derived_metric = None if value is None else derive_metric(value, *conf)
-                value = derived_metric
+                derived_metric: float | int | None = (
+                    None if values is None else derive_metric(*values, *conf)
+                )
+                values = derived_metric  # type: ignore[assignment]
                 derive_metric_name = derive_metric.__name__
-                transformed_metrics.append(derive_metric_name)
+                all_transformed_metrics.append(derive_metric_name)
             else:
-                transformed_metrics.append(False)
+                all_transformed_metrics.append(False)
 
-            values.append(value)
+            all_values.append(values)
 
             # gather remaining required data
             annotations.append(annotation)
-            metrics.append(metric)
+            all_metrics.append(tuple(metrics))
             hostnames.append(socket.gethostname())
             # Add a field for every config argument
             bound_args = sig.bind(*conf)
@@ -220,9 +268,9 @@ def extract_df_from_report(
     # Create the DataFrame with the initial columns
     df_data = {
         "Annotation": annotations,
-        "Value": values,
-        "Metric": metrics,
-        "Transformed": transformed_metrics,
+        "Value": all_values,
+        "Metric": all_metrics,
+        "Transformed": all_transformed_metrics,
         "Kernel": kernel_names,
         "GPU": gpus,
         "Host": hostnames,
@@ -234,4 +282,7 @@ def extract_df_from_report(
     for arg_name, arg_values in arg_arrays.items():
         df_data[arg_name] = arg_values
 
-    return pd.DataFrame(df_data)
+    # Explode the dataframe
+    df = explode_dataframe(pd.DataFrame(df_data))
+
+    return df

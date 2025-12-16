@@ -7,8 +7,7 @@ Test suite for Nsight Python profiler functionality.
 
 import os
 import shutil
-import tempfile
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from typing import Any, Literal
 
 import pytest
@@ -278,7 +277,7 @@ def test_no_args_vs_with_args_dataframe_comparison() -> None:
 def test_no_args_function_with_derive_metric() -> None:
     """Test that derive_metric works with functions that have no arguments."""
 
-    # Define a derive_metric function that only takes the metric value
+    # Define a derive_metric function that only takes the metric values
     # (no config parameters since the function has no args)
     def custom_metric(time_ns: float) -> float:
         """Convert time to arbitrary custom metric."""
@@ -538,6 +537,69 @@ def test_parameter_normalize_against() -> None:
 
         # Basic validation for normalize_against: AvgValue for the annotation being used as normalization factor should be 1
         assert (df.loc[df["Annotation"] == "annotation1", "AvgValue"] == 1).all()
+
+
+@nsight.analyze.kernel(
+    configs=(
+        (1,),
+        (2,),
+        (3,),
+    ),
+    runs=3,
+    normalize_against="annotation1",
+    # Some parameters that have a numerical determinism greater than
+    # 1 and grow with substantial increases in n.
+    metrics=[
+        "smsp__inst_executed.sum",
+        "smsp__inst_issued.sum",
+        "smsp__sass_inst_executed_op_global_ld.sum",
+        "smsp__sass_inst_executed_op_global_st.sum",
+    ],
+)
+def normalize_against_multiple_metrics(n: int) -> None:
+    a = torch.randn(n, n, device="cuda")
+    b = torch.randn(n, n, device="cuda")
+
+    c = torch.randn(100 * n, 100 * n, device="cuda")
+    d = torch.randn(100 * n, 100 * n, device="cuda")
+
+    with nsight.annotate("annotation1"):
+        _ = a + b
+
+    with nsight.annotate("annotation2"):
+        _ = c + d
+
+
+@pytest.mark.xfail(  # type: ignore[untyped-decorator]
+    reason="Waiting for proper support for standard normalization and speedup computation"
+)
+def test_parameter_normalize_against_multiple_metrics() -> None:
+    profile_output = normalize_against_multiple_metrics()
+    if profile_output is not None:
+        df = profile_output.to_dataframe()
+
+        requested_metrics = [
+            "smsp__inst_executed.sum",
+            "smsp__inst_issued.sum",
+            "smsp__sass_inst_executed_op_global_ld.sum",
+            "smsp__sass_inst_executed_op_global_st.sum",
+        ]
+
+        for annotation in ["annotation1", "annotation2"]:
+            for n in [1, 2, 3]:
+                subset = df[(df["Annotation"] == annotation) & (df["n"] == n)]
+                assert len(subset) == len(requested_metrics)
+
+                actual_metrics = subset["Metric"].tolist()
+                expected_metrics = [
+                    m + " relative to annotation1" for m in requested_metrics
+                ]
+                assert all(metric in actual_metrics for metric in expected_metrics)
+
+        # AvgValue for the annotation being used as normalization factor should be 1
+        assert (df.loc[df["Annotation"] == "annotation1", "AvgValue"] == 1).all()
+        # Validate that the AvgValue for the annotation being used for normalization is greater than 1
+        assert (df.loc[df["Annotation"] == "annotation2", "AvgValue"] > 1).all()
 
 
 # ============================================================================
@@ -937,34 +999,71 @@ def test_parameter_output(
 
 
 # ============================================================================
-# metric parameter test
+# metrics parameter test
 # ============================================================================
 
 
-@pytest.mark.parametrize("metric", ["invalid_value", "sm__warps_launched.sum"])  # type: ignore[untyped-decorator]
-def test_parameter_metric(metric: str) -> None:
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    "metrics, expected_result",
+    [
+        pytest.param(
+            [
+                "invalid_value",
+            ],
+            "invalid_single",
+            id="invalid_single",
+        ),
+        pytest.param(
+            [
+                "sm__warps_launched.sum",
+            ],
+            "valid_single",
+            id="valid_single",
+        ),
+        pytest.param(
+            [
+                "smsp__inst_executed.sum",
+                "smsp__inst_issued.sum",
+            ],
+            "invalid_multiple",
+            id="invalid_multiple",
+        ),
+    ],
+)
+def test_parameter_metric(metrics: Sequence[str], expected_result: str) -> None:
 
-    @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metric=metric)
+    @nsight.analyze.plot(filename="plot.png", ylabel="Instructions")
+    @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metrics=metrics)
     def profiled_func(x: int, y: int) -> None:
         _simple_kernel_impl(x, y, "test_parameter_metric")
 
     # Run profiling
-    if metric == "invalid_value":
+    if expected_result == "invalid_single":
         with pytest.raises(
             exceptions.ProfilerException,
-            match=f"Invalid value '{metric}' for 'metric' parameter for nsight.analyze.kernel()",
+            match=(
+                rf"Invalid value \['{metrics[0]}'\] for 'metrics' parameter for nsight.analyze.kernel()"
+            ),
         ):
             profiled_func()
-    else:
+    elif expected_result == "valid_single":
         profile_output = profiled_func()
         df = profile_output.to_dataframe()
 
         # Checking if the dataframe has the right metric name
         assert (
-            df["Metric"] == metric
-        ).all(), f"Invalid metric name {df.loc[df['Metric'] != metric, 'Metric'].iloc[0]} found in output dataframe"
+            df["Metric"] == metrics[0]
+        ).all(), f"Invalid metric name {df.loc[df['Metric'] != metrics[0], 'Metric'].iloc[0]} found in output dataframe"
 
         # Checking if the metric values are valid
         assert (
             df["AvgValue"].notna() & df["AvgValue"] > 0
-        ).all(), f"Invalid AvgValue for metric {metric}"
+        ).all(), f"Invalid AvgValue for metric {metrics}"
+    elif expected_result == "invalid_multiple":
+        with pytest.raises(
+            ValueError,
+            match=(
+                f"Cannot visualize {len(metrics)} > 1 metrics with the @nsight.analyze.plot decorator."
+            ),
+        ):
+            profiled_func()

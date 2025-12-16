@@ -13,6 +13,7 @@ import warnings
 from collections.abc import Callable, Collection, Iterable, Sequence
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from nsight import annotation, exceptions, thermovision, transformation, utils
@@ -276,11 +277,11 @@ class ProfileSettings:
 
     derive_metric: Callable[..., float] | None
     """
-    A function to transform the collected metric.
+    A function to transform the collected metrics.
     This can be used to compute derived metrics like TFLOPs that cannot
-    be captured by ncu directly. The function takes the metric value and
+    be captured by ncu directly. The function takes the metric values and
     the arguments of the profile-decorated function and returns the new
-    metric. See the examples for concrete use cases.
+    metrics. See the examples for concrete use cases.
     """
 
     normalize_against: str | None
@@ -333,17 +334,17 @@ class ProfileResults:
 
                 - ``Annotation``: Name of the annotated region being profiled
                 - ``<param_name>``: One column for each parameter of the decorated function
-                - ``AvgValue``: Average metric value across all runs
-                - ``StdDev``: Standard deviation of the metric across runs
-                - ``MinValue``: Minimum metric value observed
-                - ``MaxValue``: Maximum metric value observed
+                - ``AvgValue``: Average metric values across all runs
+                - ``StdDev``: Standard deviation of the metrics across runs
+                - ``MinValue``: Minimum metric values observed
+                - ``MaxValue``: Maximum metric values observed
                 - ``NumRuns``: Number of runs used for aggregation
                 - ``CI95_Lower``: Lower bound of the 95% confidence interval
                 - ``CI95_Upper``: Upper bound of the 95% confidence interval
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
-                - ``Metric``: The metric being collected
-                - ``Transformed``: Name of the function used to transform the metric (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Metric``: The metrics being collected
+                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -423,12 +424,12 @@ class NsightProfiler:
                 **kwargs,
             )
 
-            # Check if the function has a return type
-
             raw_df = self.collector.collect(func, configs, self.settings)
 
+            # Check if the function has a return type
             if raw_df is not None:
-                processed = transformation.aggregate_data(
+
+                processed: pd.DataFrame = transformation.aggregate_data(
                     raw_df,
                     func,
                     self.settings.normalize_against,

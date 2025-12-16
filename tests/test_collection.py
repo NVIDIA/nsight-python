@@ -19,7 +19,7 @@ def test_launch_ncu_runs_with_ncu_available(mock_run: MagicMock) -> None:
     collection.ncu.launch_ncu(
         "report.ncu-rep",
         "func_name",
-        metric="sm__cycles_elapsed.avg",
+        metrics=["sm__cycles_elapsed.avg"],
         cache_control="all",
         clock_control="base",
         replay_mode="kernel",
@@ -58,7 +58,7 @@ def test_launch_ncu_falls_back_without_ncu(mock_run: MagicMock) -> None:
         collection.ncu.launch_ncu(
             "report.ncu-rep",
             "func_name",
-            metric="metric",
+            metrics=["metric"],
             cache_control="all",
             clock_control="base",
             replay_mode="kernel",

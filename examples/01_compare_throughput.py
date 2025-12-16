@@ -10,7 +10,7 @@ This example shows how to compare different implementations using a custom metri
 New concepts:
 - Multiple `nsight.annotate()` blocks to profile different kernels
 - Using `@nsight.annotate()` as a function decorator (alternative to context manager)
-- Using the `metric` parameter to collect a specific Nsight Compute metric (DRAM throughput instead of execution time)
+- Using the `metrics` parameter to collect a specific Nsight Compute metric (DRAM throughput instead of execution time)
 - Using `print_data=True` to print the collected dataframe to the terminal
 """
 
@@ -33,7 +33,7 @@ def einsum_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 @nsight.analyze.kernel(
     runs=10,
     # Collect DRAM throughput as percentage of peak instead of time
-    metric="dram__throughput.avg.pct_of_peak_sustained_elapsed",
+    metrics=["dram__throughput.avg.pct_of_peak_sustained_elapsed"],
 )
 def benchmark_matmul_throughput(n: int) -> None:
     """
