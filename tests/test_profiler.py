@@ -307,19 +307,26 @@ def test_no_args_function_with_derive_metric() -> None:
     assert result is not None, "ProfileResults should be returned"
     df = result.to_dataframe()
 
-    # Should have exactly 1 row
-    assert len(df) == 1, f"Expected 1 row in dataframe, got {len(df)}"
+    # Expected: exactly 2 rows, one for each metric ("gpu__time_duration.sum" and "custom_metric")
+    assert len(df) == 2, f"Expected 2 row in dataframe, got {len(df)}"
+
+    # Verify the collected metric
+    assert (
+        df["Metric"].iloc[0] == "gpu__time_duration.sum"
+    ), f"Expected 'gpu__time_duration.sum' in Metric column, got {df['Metric'].iloc[0]}"
 
     # Verify the transformation was applied
     assert (
-        df["Transformed"].iloc[0] == "custom_metric"
-    ), f"Expected 'custom_metric' in Transformed column, got {df['Transformed'].iloc[0]}"
+        df["Metric"].iloc[1] == "custom_metric"
+    ), f"Expected 'custom_metric' in Metric column, got {df['Metric'].iloc[1]}"
 
-    # Verify the value is positive (transformed metric should still be positive)
-    assert df["AvgValue"].iloc[0] > 0, "Expected positive transformed metric value"
+    # Verify the values are positive (transformed metric should still be positive)
+    assert all(df["AvgValue"] > 0), "Expected positive transformed metric value"
 
     # Verify runs parameter was respected
-    assert df["NumRuns"].iloc[0] == 2, f"Expected 2 runs, got {df['NumRuns'].iloc[0]}"
+    assert all(
+        df["NumRuns"] == 2
+    ), f"Expected 2 runs, got {list(df['NumRuns'][df['NumRuns'] == 2].values)}"
 
 
 # ----------------------------------------------------------------------------
@@ -930,7 +937,7 @@ def test_parameter_replay_mode(
 # ============================================================================
 
 
-def _compute_custom_metric(time_ns: float, x: int, y: int) -> float:
+def _compute_custom_metric_1(time_ns: float, x: int, y: int) -> float:
     """Transform time in nanoseconds to a custom metric based on matrix size."""
     # Custom formula: operations per second (arbitrary for testing)
     operations = x * y
@@ -938,19 +945,30 @@ def _compute_custom_metric(time_ns: float, x: int, y: int) -> float:
     return operations / time_s if time_s > 0 else 0.0
 
 
+def _compute_custom_metric_2(time_ns: float, x: int, y: int) -> dict[str, float]:
+    """Transform time in nanoseconds to a custom metric based on matrix size."""
+    # Custom formula: operations per second (arbitrary for testing)
+    operations = x * y
+    time_s = time_ns / 1e9
+    return {"Custom Metric": operations / time_s if time_s > 0 else 0.0}
+
+
 @pytest.mark.parametrize(
     "derive_metric_func,expected_name",
     [
-        (_compute_custom_metric, "_compute_custom_metric"),
+        (_compute_custom_metric_1, "_compute_custom_metric_1"),
+        (_compute_custom_metric_2, "Custom Metric"),
         (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>"),
     ],
 )  # type: ignore[untyped-decorator]
 def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) -> None:
     """Test the derive_metric parameter to transform collected metrics."""
 
+    num_runs = 2
+
     @nsight.analyze.kernel(
         configs=[(100, 100), (200, 200)],
-        runs=2,
+        runs=num_runs,
         output="quiet",
         derive_metric=derive_metric_func,
     )
@@ -963,17 +981,21 @@ def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) ->
 
     # Verify the transformed metric is present
     df = profile_output.to_dataframe()
-    assert "Transformed" in df.columns, "Transformed column should exist"
-    assert (
-        df["Transformed"].iloc[0] == expected_name
-    ), f"Transformed column should show '{expected_name}'"
+
+    assert all(
+        df["Metric"][0:num_runs] == "gpu__time_duration.sum"
+    ), f"Metric column (row-{0} ~ row-{num_runs-1}) should show 'gpu__time_duration.sum'"
+
+    assert all(
+        df["Metric"][num_runs : len(df)] == expected_name
+    ), f"Metric column (row-{num_runs} ~ row-{len(df)-1}) should show '{expected_name}'"
 
     # Verify the metric values are transformed (should be positive numbers)
     assert "AvgValue" in df.columns, "AvgValue column should exist"
     assert all(df["AvgValue"] > 0), "All derived metric values should be positive"
 
-    # Verify we have results for both configs
-    assert len(df) == 2, "Should have results for 2 configurations"
+    # Verify we have results for all combinations (2 configs * 2 metrics = 4 rows)
+    assert len(df) == 2 * 2, "Should have results for 2 configurations * 2 metrics"
 
 
 # ============================================================================
@@ -1016,7 +1038,7 @@ def test_parameter_output(
 
 
 @pytest.mark.parametrize(  # type: ignore[untyped-decorator]
-    "metrics, expected_result",
+    "metrics,expected_result",
     [
         pytest.param(
             [
@@ -1042,12 +1064,12 @@ def test_parameter_output(
         ),
     ],
 )
-def test_parameter_metric(metrics: Sequence[str], expected_result: str) -> None:
+def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None:
 
     @nsight.analyze.plot(filename="plot.png", ylabel="Instructions")
     @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metrics=metrics)
     def profiled_func(x: int, y: int) -> None:
-        _simple_kernel_impl(x, y, "test_parameter_metric")
+        _simple_kernel_impl(x, y, "test_parameter_metrics")
 
     # Run profiling
     if expected_result == "invalid_single":
@@ -1075,7 +1097,115 @@ def test_parameter_metric(metrics: Sequence[str], expected_result: str) -> None:
         with pytest.raises(
             ValueError,
             match=(
-                f"Cannot visualize {len(metrics)} > 1 metrics with the @nsight.analyze.plot decorator."
+                rf"Cannot visualize multiple metrics \({len(metrics)} > 1\) with the @nsight\.analyze\.plot decorator\."
             ),
         ):
             profiled_func()
+
+
+# ============================================================================
+# metric parameter test
+# ============================================================================
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    "metrics,metric_param,expected_result",
+    [
+        pytest.param(
+            [
+                "gpu__time_duration.sum",
+            ],
+            None,
+            "valid_single_none",
+            id="valid_single_none",
+        ),
+        pytest.param(
+            [
+                "gpu__time_duration.sum",
+            ],
+            "gpu__time_duration.sum",
+            "valid_single_specified",
+            id="valid_single_specified",
+        ),
+        pytest.param(
+            [
+                "smsp__inst_executed.sum",
+                "smsp__inst_issued.sum",
+            ],
+            "smsp__inst_executed.sum",
+            "valid_multiple_specified",
+            id="valid_multiple_specified",
+        ),
+        pytest.param(
+            [
+                "smsp__inst_executed.sum",
+                "smsp__inst_issued.sum",
+            ],
+            None,
+            "invalid_multiple_none",
+            id="invalid_multiple_none",
+        ),
+        pytest.param(
+            [
+                "smsp__inst_executed.sum",
+                "smsp__inst_issued.sum",
+            ],
+            "invalid_metric",
+            "invalid_metric_specified",
+            id="invalid_metric_specified",
+        ),
+    ],
+)
+def test_legalize_metric_in_plot(
+    metrics: Sequence[str], metric_param: str | None, expected_result: str
+) -> None:
+
+    @nsight.analyze.plot(
+        filename="plot.png", ylabel="Instructions", metric=metric_param
+    )
+    @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metrics=metrics)
+    def profiled_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_legalize_metric_in_plot")
+
+    if expected_result == "invalid_multiple_none":
+        with pytest.raises(
+            ValueError,
+            match=(
+                rf"Cannot visualize multiple metrics \({len(metrics)} > 1\) with the @nsight\.analyze\.plot decorator\."
+            ),
+        ):
+            profiled_func()
+    elif expected_result == "invalid_metric_specified":
+        with pytest.raises(
+            ValueError,
+            match=(rf"Metric '{metric_param}' not found in the profile results\."),
+        ):
+            profiled_func()
+    elif expected_result in [
+        "valid_single_none",
+        "valid_single_specified",
+        "valid_multiple_specified",
+    ]:
+        profile_output = profiled_func()
+        df = profile_output.to_dataframe()
+        print(df)
+
+        # Check if the dataframe has the right metrics
+        assert all(
+            df["Metric"].isin(metrics)
+        ), f"Invalid metric name {df.loc[df['Metric'] != metrics[0], 'Metric'].iloc[0]} found in output dataframe"
+
+        if metric_param is None:
+            expected_metric = metrics[0]
+        else:
+            expected_metric = metric_param
+
+        metric_rows = df[df["Metric"] == expected_metric]
+        assert (
+            len(metric_rows) == 2  # 2 configs
+        ), f"Expected metric '{expected_metric}' not found in results"
+
+        # Check if the metric values are valid
+        assert all(
+            df["AvgValue"].notna() & (df["AvgValue"] > 0)
+        ), f"Invalid AvgValue for metric {metrics}"

@@ -12,6 +12,7 @@ from typing import Any, Literal, overload
 import matplotlib
 import matplotlib.figure
 import numpy as np
+from numpy.typing import NDArray
 
 import nsight.collection as collection
 import nsight.visualization as visualization
@@ -31,7 +32,7 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metric: Callable[..., float] | None = None,
+    derive_metric: Callable[..., float | dict[str, float]] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -52,7 +53,7 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metric: Callable[..., float] | None = None,
+    derive_metric: Callable[..., float | dict[str, float]] | None = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -105,7 +106,12 @@ def kernel(
             This can be used to compute derived metrics like TFLOPs that cannot
             be captured by ncu directly. The function takes the metric values and
             the arguments of the profile-decorated function and returns the new
-            metric. The parameter order requirements for the custom function:
+            metrics. Return value can be either:
+
+            - A single value (float/int): Will be added as a new metric with the function name as the metric name.
+            - A dictionary: Keys will be used as metric names, values as metric values.
+
+            The parameter order requirements for the custom function:
 
             - First several arguments: Must exactly match the order of metrics declared in the @kernel decorator. These arguments will receive the actual measured values of those metrics.
             - Remaining arguments: Must exactly match the signature of the decorated function. In other words, the original function's parameters are passed in order.
@@ -175,8 +181,7 @@ def kernel(
 
                 - ``Annotation``: Name of the annotated region being profiled
                 - ``Value``: Raw metric values collected by the profiler
-                - ``Metric``: The metrics being collected (e.g., ``gpu__time_duration.sum``)
-                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Metric``: The metrics being collected (e.g., ``gpu__time_duration.sum``) and the metrics being derived
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -197,8 +202,7 @@ def kernel(
                 - ``CI95_Upper``: Upper bound of the 95% confidence interval
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
-                - ``Metric``: The metrics being collected
-                - ``Transformed``: Name of the function used to transform the metrics (specified via ``derive_metric``), or ``False`` if no transformation was applied. For lambda functions, this shows ``"<lambda>"``
+                - ``Metric``: The metrics being collected and the metrics being derived
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -259,29 +263,63 @@ def kernel(
         return profiler(_func)  # type: ignore[return-value]
 
 
-def _validate_metric(result: collection.core.ProfileResults) -> None:
+def _legalize_metric(result: collection.core.ProfileResults, metric: str | None) -> str:
     """
-    Check if ProfileResults contains only a single metric.
+    Legalize the metric parameter for plotting.
+
+    This function ensures that the provided metric parameter is valid for plotting.
+    If the metric is None, it verifies there is exactly one metric available and
+    returns that metric's name. If a metric is specified, it validates that the
+    metric exists in the profile results and returns itself.
 
     Args:
-        result: ProfileResults object
+        result: ProfileResults object containing profiling data.
+        metric: The name of the metric to plot, or None to use the single metric
+            if only one exists.
+
+    Returns:
+        The validated metric name for plotting.
 
     Raises:
-        ValueError: If multiple metrics are detected
+        ValueError: Raised in the following cases:
+            1. When `metric` is None and multiple metrics are found.
+            2. When `metric` is None and no metrics are found.
+            3. When `metric` is specified but not present in the results.
     """
     df = result.to_dataframe()
 
-    # Check for multiple metrics in "Metric" column
-    unique_metrics = df["Metric"].unique()
-    if len(unique_metrics) > 1:
-        raise ValueError(
-            f"Cannot visualize {len(unique_metrics)} > 1 metrics with the "
-            "@nsight.analyze.plot decorator."
-        )
+    # Extract unique metric names from the DataFrame
+    unique_metrics: NDArray[Any] = df["Metric"].unique()
+    n_metrics = len(unique_metrics)
+
+    if metric is None:
+        # Case: No metric specified - ensure there is exactly one metric
+        if n_metrics > 1:
+            raise ValueError(
+                f"Cannot visualize multiple metrics ({n_metrics} > 1) with the "
+                "@nsight.analyze.plot decorator. Please specify a metric to plot. "
+                f"The metrics found are: {unique_metrics.tolist()}"
+            )
+        elif n_metrics == 0:
+            raise ValueError(
+                "No metrics found in the profile results. Please ensure that the "
+                "profiler is configured correctly."
+            )
+        else:  # n_metrics == 1
+            return str(unique_metrics[0])
+    else:
+        # Case: Metric specified - ensure it exists in the results
+        if metric not in unique_metrics:
+            raise ValueError(
+                f"Metric '{metric}' not found in the profile results. Please check "
+                f"the metric name and try again. The metrics found are: {unique_metrics.tolist()}."
+            )
+        return metric
 
 
 def plot(
     filename: str = "plot.png",
+    metric: str | None = None,
     *,
     title: str = "Nsight Analyze Kernel Plot Results",
     ylabel: str | None = None,
@@ -320,6 +358,10 @@ def plot(
         def my_func(...):
 
     Args:
+        metric: The specific metric to plot (e.g., ``gpu__time_duration.sum``).
+            If None (default), the function will plot the single metric found in
+            the ``ProfileResults`` object containing profiling data, if only one exists,
+            otherwise it will raise an error if multiple metrics are present. Default: ``None``
         filename: Filename to save the plot. Default: ``'plot'``
         title: Title for the plot. Default: ``'Nsight Analyze Kernel Plot Results'``
         ylabel: Label for the y-axis in the generated plot.
@@ -358,11 +400,12 @@ def plot(
             result = func(*args, **kwargs)
 
             if "NSPY_NCU_PROFILE" not in os.environ:
-                # Check for multiple metrics or complex data structures
-                _validate_metric(result)
+                # Legalize the user-provided metric for plotting
+                lagalized_metric = _legalize_metric(result, metric)
 
                 visualization.visualize(
                     result.to_dataframe(),
+                    metric=lagalized_metric,
                     row_panels=row_panels,
                     col_panels=col_panels,
                     x_keys=x_keys,

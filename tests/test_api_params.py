@@ -52,6 +52,7 @@ def get_app_args() -> argparse.Namespace:
     # nsight.analyze.plot() parameters
     # TBD no command line arguments yet for: row_panels, col_panels, x_keys, annotate_points, show_aggregate
     parser.add_argument("--plot-title", "-l", default="test", help="Plot title")
+    parser.add_argument("--plot-metric", "-e", default=None, help="Plot metric")
     parser.add_argument(
         "--plot-filename", "-f", default="params_test1.png", help="Plot filename"
     )
@@ -86,6 +87,7 @@ def main(argv: List[str]) -> None:
 
     @nsight.analyze.plot(
         title=args.plot_title,
+        metric=args.plot_metric,
         filename=args.plot_filename,
         plot_type=args.plot_type,
         print_data=args.plot_print_data,

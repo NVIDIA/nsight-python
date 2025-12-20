@@ -76,13 +76,13 @@ def aggregate_data(
     }
 
     # The columns to aggregate except for the function parameters
-    groupby_columns = ["Annotation", "Metric", "Transformed"]
+    groupby_columns = ["Annotation", "Metric"]
 
     # Add assertion-based unique selection for remaining fields
     remaining_fields = [
         col
         for col in df.columns
-        if col not in [*groupby_columns, "Value", "_original_order"] + func_fields
+        if col not in [*groupby_columns, "Value", "_original_order", *func_fields]
     ]
 
     for col in remaining_fields:
@@ -136,11 +136,11 @@ def aggregate_data(
         ), f"Annotation '{normalize_against}' not found in data."
 
         # Columns of normalization dataframe to merge on
-        merge_on = func_fields + ["Metric", "Transformed"]
+        merge_on = [*func_fields, "Metric"]
 
         # Create a DataFrame to hold the normalization values
         normalization_df = agg_df[agg_df["Annotation"] == normalize_against][
-            merge_on + ["AvgValue"]
+            [*merge_on, "AvgValue"]
         ]
         normalization_df = normalization_df.rename(
             columns={"AvgValue": "NormalizationValue"}

@@ -29,7 +29,7 @@ dtypes = [torch.float32, torch.float16]
 configs = list(itertools.product(sizes, dtypes))
 
 
-def compute_tflops(time_ns: float, *conf: Any) -> float:
+def compute_tflops(time_ns: float, *conf: Any) -> dict[str, float]:
     """
     Compute TFLOPs/s.
 
@@ -45,11 +45,12 @@ def compute_tflops(time_ns: float, *conf: Any) -> float:
 
     flops = 2 * n * n * n
     tflops: float = flops / (time_ns / 1e9) / 1e12
-    return tflops
+    return {"TFLOPS": tflops}
 
 
 @nsight.analyze.plot(
     filename="04_multi_parameter.png",
+    metric="TFLOPS",
     ylabel="Performance (TFLOPs/s)",
     annotate_points=True,
 )

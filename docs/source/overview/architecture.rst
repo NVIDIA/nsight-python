@@ -41,12 +41,25 @@ Nsight Python collects `gpu__time_duration.sum` by default. To collect other NVI
        ...
 
 **Derived Metrics**  
-Define a Python function that computes metrics like TFLOPs based on runtime and input configuration:
+Define a Python function that computes metrics like TFLOPS based on runtime and input configuration:
 
 .. code-block:: python
 
    def tflops(t, m, n, k):
        return 2 * m * n * k / (t / 1e9) / 1e12
+
+   # or
+   def tflops(t, m, n, k):
+       return {"TFLOPS": 2 * m * n * k / (t / 1e9) / 1e12}
+
+   # or
+   def tflops_and_arith_(t, m, n, k):
+       tflops = 2 * m * n * k / (t / 1e9) / 1e12
+       memory_bytes = (m * k + k * n + m * n) * 4
+       return {
+           "TFLOPS": tflops,
+           "ArithIntensity": tflops / memory_bytes,
+       }
 
    @nsight.analyze.kernel(configs=[(1024, 1024, 64)], derive_metric=tflops)
    def benchmark(m, n, k):
