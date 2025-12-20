@@ -81,11 +81,13 @@ def benchmark_custom_plot(n: int) -> None:
 
 def main() -> None:
     print("Running bar chart example...")
-    benchmark_bar_chart()
+    res = benchmark_bar_chart()
+    print(res.to_dataframe())
     print("✓ Bar chart saved to '06_bar_chart.png'")
 
     print("\nRunning custom plot example...")
-    benchmark_custom_plot()
+    res = benchmark_custom_plot()
+    print(res.to_dataframe())
     print("✓ Custom plot saved to '06_custom_plot.png'")
 
 

@@ -19,6 +19,7 @@ import pandas as pd
 from deepdiff import DeepHash
 
 from nsight import exceptions, extraction, utils
+from nsight.cache import GlobalNCUProfileCache
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
 
@@ -63,6 +64,9 @@ def launch_ncu(
         Produces NVIDIA Nsight Compute report file with profiling data.
     """
     assert report_path.endswith(".ncu-rep")
+
+    # Set an environment variable to track the main process ID.
+    os.environ["NSPY_NCU_MAIN_PID"] = str(os.getpid())
 
     # Determine the script being executed
     script_path = os.path.abspath(sys.argv[0])
@@ -254,15 +258,18 @@ class NCUCollector(core.NsightCollector):
                 self.combine_kernel_metrics,
             )
 
+            # Save to cache
+            GlobalNCUProfileCache().save_profile_result(func.__name__, df)
+
             return df
 
         else:
             # If NSPY_NCU_PROFILE is set, just run the function normally
             sig = os.environ["NSPY_NCU_PROFILE"]
 
-            # If this is not the function call we are profiling, stop
+            # If this is not the function we are profiling, just load from cache
             if get_signature(func, configs_list) != sig:
-                return None
+                return GlobalNCUProfileCache().load_profile_result(func.__name__)
 
             if settings.output_progress:
                 utils.print_header(
