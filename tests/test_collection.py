@@ -3,7 +3,7 @@
 
 import subprocess
 import sys
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -95,7 +95,7 @@ def patch_helpers(monkeypatch: Any) -> None:
         def __eq__(self, other: object) -> bool:
             if not isinstance(other, dict):
                 return False
-            subset: Dict[str, str] = self
+            subset: dict[str, str] = self
             return all(item in other.items() for item in subset.items())
 
     pytest.helpers = type("helpers", (), {})()
@@ -103,7 +103,7 @@ def patch_helpers(monkeypatch: Any) -> None:
     def mock_any_command_string() -> Matcher:
         return Matcher("any-ncu-command")
 
-    def env_contains(expected_subset: Dict[str, str]) -> EnvMatcher:
+    def env_contains(expected_subset: dict[str, str]) -> EnvMatcher:
         return EnvMatcher(expected_subset)
 
     pytest.helpers.mock_any_command_string = mock_any_command_string

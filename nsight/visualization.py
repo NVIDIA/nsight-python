@@ -20,6 +20,7 @@ from nsight import exceptions, utils
 
 def visualize(
     agg_df: str | pd.DataFrame,
+    metric: str | None,
     row_panels: Sequence[str] | None,
     col_panels: Sequence[str] | None,
     x_keys: Sequence[str] | None = None,
@@ -43,6 +44,10 @@ def visualize(
 
     Args:
         agg_df: Aggregated profiling data or path to CSV file.
+        metric: The specific metric to plot (e.g., ``gpu__time_duration.sum``).
+            If None (default), the function will plot the single metric found in
+            the ``ProfileResults`` object containing profiling data, if only one exists,
+            otherwise it will raise an error if multiple metrics are present. Default: ``None``
         row_panels: List of fields for whose unique values
             to create a new subplot along the vertical axis.
         col_panels: List of fields for whose unique values
@@ -69,6 +74,10 @@ def visualize(
         agg_df, pd.DataFrame
     ), f"agg_df must be a pandas DataFrame or a CSV file path, not {type(agg_df)}"
 
+    # Filter by metric
+    if metric is not None:
+        agg_df = agg_df[agg_df["Metric"] == metric]
+
     row_panels = row_panels or []
     col_panels = col_panels or []
 
@@ -81,7 +90,7 @@ def visualize(
 
     # Build Configuration field excluding variant_fields
     annotation_idx = agg_df.columns.get_loc("AvgValue")
-    func_fields = list(agg_df.columns[3:annotation_idx])
+    func_fields = list(agg_df.columns[2:annotation_idx])
     subplot_fields = row_panels + col_panels  # type: ignore[operator]
     non_panel_fields = [
         field
@@ -202,7 +211,7 @@ def visualize(
                 config_fields = x_keys
             else:
                 annotation_idx = local_df.columns.get_loc("AvgValue")
-                func_fields = list(local_df.columns[3:annotation_idx])
+                func_fields = list(local_df.columns[2:annotation_idx])
                 subplot_fields = row_panels + col_panels  # type: ignore[operator]
                 config_exclude = set(variant_fields or [])
                 config_fields = [

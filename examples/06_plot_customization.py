@@ -22,14 +22,15 @@ import nsight
 sizes = [(2**i,) for i in range(11, 14)]
 
 
-def compute_tflops(time_ns: float, n: int) -> float:
+def compute_tflops(time_ns: float, n: int) -> dict[str, float]:
     flops = 2 * n * n * n
-    return flops / (time_ns / 1e9) / 1e12
+    return {"TFLOPS": flops / (time_ns / 1e9) / 1e12}
 
 
 # Example 1: Bar chart
 @nsight.analyze.plot(
     filename="06_bar_chart.png",
+    metric="TFLOPS",
     title="Matrix Multiplication Performance",
     ylabel="TFLOPs/s",
     plot_type="bar",  # Use bar chart instead of line plot
@@ -68,6 +69,7 @@ def custom_style(fig: Any) -> None:
 
 @nsight.analyze.plot(
     filename="06_custom_plot.png",
+    metric="TFLOPS",
     plot_callback=custom_style,  # Apply custom styling
 )
 @nsight.analyze.kernel(configs=sizes, runs=10, derive_metric=compute_tflops)
