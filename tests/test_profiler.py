@@ -731,7 +731,7 @@ def test_parameter_ignore_kernel_list(ignore_kernel_list: None | list[str]) -> N
         s = device.create_stream()
 
         program = Program(CUDA_KERNEL_CODE, "c++")
-        module = program.compile("ptx")
+        module = program.compile("cubin")
         kernel_add = module.get_kernel("vector_add")
         kernel_mul = module.get_kernel("vector_multiply")
 
@@ -888,7 +888,7 @@ def test_parameter_replay_mode(
             s = device.create_stream()
 
             program = Program(CUDA_KERNEL_CODE, "c++")
-            module = program.compile("ptx")
+            module = program.compile("cubin")
             kernel_add = module.get_kernel("vector_add")
             kernel_mul = module.get_kernel("vector_multiply")
 
