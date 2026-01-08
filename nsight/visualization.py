@@ -76,7 +76,7 @@ def visualize(
 
     # Filter by metric
     if metric is not None:
-        agg_df = agg_df[agg_df["Metric"] == metric]
+        agg_df = agg_df[agg_df["Metric"] == metric].copy()
 
     row_panels = row_panels or []
     col_panels = col_panels or []
