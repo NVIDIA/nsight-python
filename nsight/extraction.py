@@ -19,7 +19,7 @@ import functools
 import inspect
 import socket
 from collections.abc import Callable, Sequence
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, TypeAlias
 
 import ncu_report
 import numpy as np
@@ -28,6 +28,9 @@ from numpy.typing import NDArray
 
 from nsight import exceptions, utils
 from nsight.utils import is_scalar
+
+DerivedValue: TypeAlias = float | int | None
+DerivedValueDict: TypeAlias = dict[str, DerivedValue]
 
 
 def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUActionData:
@@ -61,45 +64,6 @@ def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUAct
         memory_clock=action["device__attribute_memory_clock_rate"].value(),
         gpu=action["device__attribute_display_name"].value(),
     )
-
-
-def explode_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Explode columns with list/tuple/np.ndarray values into multiple rows.
-    Two scenarios:
-
-    1. No derived metrics (all "Transformed" = False):
-       - All columns maybe contain multiple values (lists/arrays).
-       - Use `explode()` to flatten each list element into separate rows.
-
-    2. With derived metrics:
-       - Metric columns contain either single-element lists or scalars.
-       - Only flatten single-element lists to scalars, don't create new rows.
-
-    Args:
-        df: Dataframe to be exploded.
-
-    Returns:
-        Exploded dataframe.
-    """
-    df_explode = None
-    if df["Transformed"].eq(False).all():
-        # 1: No derived metrics - explode all columns with sequences into rows.
-        df_explode = df.apply(pd.Series.explode).reset_index(drop=True)
-    else:
-        # 2: With derived metrics - only explode columns with single-value sequences.
-        df_explode = df.apply(
-            lambda col: (
-                col.apply(
-                    lambda x: (
-                        x[0]
-                        if isinstance(x, (list, tuple, np.ndarray)) and len(x) == 1
-                        else x
-                    )
-                )
-            )
-        )
-    return df_explode
 
 
 def extract_df_from_report(
@@ -145,13 +109,16 @@ def extract_df_from_report(
         )
 
     annotations: List[str] = []
-    all_values: List[NDArray[Any] | None] = []
+    all_values: List[Tuple[Any, ...] | None] = []
+    all_transformed_values: List[
+        List[DerivedValue] | DerivedValue | NDArray[Any] | None
+    ] = []
     kernel_names: List[str] = []
     gpus: List[str] = []
     compute_clocks: List[int] = []
     memory_clocks: List[int] = []
     all_metrics: List[Tuple[str, ...]] = []
-    all_transformed_metrics: List[str | bool] = []
+    all_transformed_metrics: List[List[str] | str | bool] = []
     hostnames: List[str] = []
 
     sig = inspect.signature(func)
@@ -245,19 +212,46 @@ def extract_df_from_report(
             # evaluate the measured metrics
             values = data.values
             if derive_metric is not None:
-                derived_metric: float | int | None = (
+                if not callable(derive_metric):
+                    raise TypeError("derive_metric must be a callable function")
+
+                if values is not None:
+                    derive_metric_params = inspect.signature(derive_metric).parameters
+                    has_varargs: bool = any(
+                        p.kind == inspect.Parameter.VAR_POSITIONAL
+                        for p in derive_metric_params.values()
+                    )
+                    actual_params = None if has_varargs else len(derive_metric_params)
+                    # If there are varargs, skip the check
+                    if actual_params is not None:
+                        expected_params = len(values) + len(conf)
+                        if actual_params != expected_params:
+                            raise ValueError(
+                                f"derive_metric expects {expected_params} parameters "
+                                f"({len(values)} metric values + {len(conf)} configs), "
+                                f"but has {actual_params} parameters"
+                            )
+
+                derived_metric: DerivedValueDict | DerivedValue = (
                     None if values is None else derive_metric(*values, *conf)
                 )
-                values = derived_metric  # type: ignore[assignment]
-                derive_metric_name = derive_metric.__name__
-                all_transformed_metrics.append(derive_metric_name)
-            else:
-                all_transformed_metrics.append(False)
-
-            all_values.append(values)
+                if isinstance(derived_metric, dict):
+                    # If the derived metric is a dict, then we have multiple metrics
+                    # and use the keys of the dict as metric names.
+                    metric_names, metric_values = zip(
+                        *[(k, v) for k, v in derived_metric.items()]
+                    )
+                    all_transformed_values.append(list(metric_values))
+                    all_transformed_metrics.append(list(metric_names))
+                else:
+                    # If the derived metric is a scalar, then we have a single metric
+                    # and use the name of the function as the metric name.
+                    all_transformed_values.append(derived_metric)
+                    all_transformed_metrics.append(derive_metric.__name__)
 
             # gather remaining required data
             annotations.append(annotation)
+            all_values.append(tuple(values) if values is not None else None)
             all_metrics.append(tuple(metrics))
             hostnames.append(socket.gethostname())
             # Add a field for every config argument
@@ -270,7 +264,6 @@ def extract_df_from_report(
         "Annotation": annotations,
         "Value": all_values,
         "Metric": all_metrics,
-        "Transformed": all_transformed_metrics,
         "Kernel": kernel_names,
         "GPU": gpus,
         "Host": hostnames,
@@ -283,6 +276,30 @@ def extract_df_from_report(
         df_data[arg_name] = arg_values
 
     # Explode the dataframe
-    df = explode_dataframe(pd.DataFrame(df_data))
+    df = pd.DataFrame(df_data).apply(pd.Series.explode).reset_index(drop=True)
+
+    if derive_metric is not None:
+        transformed_df_data = {
+            "Annotation": annotations,
+            "Value": all_transformed_values,
+            "Metric": all_transformed_metrics,
+            "Kernel": kernel_names,
+            "GPU": gpus,
+            "Host": hostnames,
+            "ComputeClock": compute_clocks,
+            "MemoryClock": memory_clocks,
+        }
+
+        for arg_name, arg_values in arg_arrays.items():
+            transformed_df_data[arg_name] = arg_values
+
+        transformed_df = (
+            pd.DataFrame(transformed_df_data)
+            .apply(pd.Series.explode)
+            .reset_index(drop=True)
+        )
+
+        # Concat the two dataframes
+        df = pd.concat([df, transformed_df], ignore_index=True)
 
     return df
