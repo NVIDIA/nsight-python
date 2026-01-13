@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -58,7 +58,7 @@ profile = "black"
 allow-direct-references = true
 
 [tool.hatch.version]
-path = "nsight/__init__.py"
+source = "vcs"
 
 [tool.pytest.ini_options]
 filterwarnings = [

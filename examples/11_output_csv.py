@@ -21,7 +21,7 @@ import nsight
 
 # Get current directory for output
 current_dir = os.path.dirname(os.path.abspath(__file__))
-output_prefix = f"{current_dir}/example10_"
+output_prefix = f"{current_dir}/example11_"
 
 
 # Matrix sizes to benchmark
@@ -101,7 +101,7 @@ def read_and_display_csv_files() -> None:
     # Find CSV files
     csv_files = []
     for file in os.listdir(current_dir):
-        if file.startswith("example10_") and file.endswith(".csv"):
+        if file.startswith("example11_") and file.endswith(".csv"):
             csv_files.append(os.path.join(current_dir, file))
 
     for file_path in sorted(csv_files):
@@ -129,7 +129,7 @@ def read_and_display_csv_files() -> None:
 def main() -> None:
     # Clean up any previous output files
     for old_file in os.listdir(current_dir):
-        if old_file.startswith("example10_") and old_file.endswith(
+        if old_file.startswith("example11_") and old_file.endswith(
             (".csv", ".ncu-rep", ".log")
         ):
             os.remove(os.path.join(current_dir, old_file))

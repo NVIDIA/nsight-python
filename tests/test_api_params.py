@@ -3,7 +3,7 @@
 
 import argparse
 import sys
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -12,15 +12,152 @@ import nsight
 # powers of two, 1k - 4k
 sizes = [(2**i,) for i in range(10, 13)]
 
+# Test scenario definitions
+TEST_SCENARIOS: Dict[str, Dict[str, Any]] = {
+    # ==========================================================================
+    # Config validation error scenarios
+    # ==========================================================================
+    "no_configs": {
+        "description": "No configs provided - should error",
+        "decorator_configs": None,
+        "runtime_configs": None,
+        "expected": "ERROR: You have provided no configs. Provide configs at decoration time or at runtime.",
+    },
+    "empty_configs": {
+        "description": "Empty configs list - should error",
+        "decorator_configs": [],
+        "expected": "ERROR: configs list cannot be empty",
+    },
+    "both_configs": {
+        "description": "Both decorator and runtime configs - should error",
+        "runtime_configs": [(1024,), (2048,)],
+        "expected": "ERROR: You have provided configs at decoration time and at runtime. Provide configs at decoration time or at runtime.",
+        # Note: decorator_configs is not set here, so the default 'sizes' will be used.
+    },
+    "mismatched_lengths": {
+        "description": "Configs with different argument counts - should error",
+        "decorator_configs": [(1024,), (2048, 512), (4096,)],
+        "expected": "ERROR: All configs must have the same number of arguments. Found lengths: [1, 2, 1]",
+    },
+    "wrong_arg_count": {
+        "description": "Configs have wrong number of arguments for function - should error",
+        "decorator_configs": [(1024, 512), (2048, 1024)],
+        "expected": "ERROR: Configs have 2 arguments, but function expects 1",
+    },
+    # ==========================================================================
+    # RuntimeError scenarios
+    # ==========================================================================
+    "inconsistent_kernel_counts": {
+        "description": "RuntimeError: Expect same number of kernels per run",
+        "decorator_configs": [(1024,), (2048,)],
+        "benchmark_type": "variable_kernels",
+        "runs": 1,
+        "expected": "ERROR: Expect same number of kernels per run. Got average of 1.5 per run",
+    },
+    "multiple_kernels_no_combine": {
+        "description": "RuntimeError: More than one kernel is launched within annotation",
+        "decorator_configs": [(2048,)],
+        "benchmark_type": "multiple_kernels",
+        "runs": 1,
+        "expected": "ERROR: More than one (total=2) kernel is launched within the annotation\n We expect one kernel per annotation\n Try one of the following solutions:\n   - Use `replay_mode='range'` to profile the entire annotated range instead of individual kernels\n   - Use `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n   - Add some of the kernels to the ignore_kernel_list\n Kernels are:\n <list of 2 kernel names>",
+    },
+}
+
+
+def list_scenarios() -> None:
+    """
+    Print all available test scenarios.
+    """
+    print("Available Test Scenarios:")
+    print("=" * 50)
+
+    for name, config in TEST_SCENARIOS.items():
+        print(f"\n{name}:")
+        print(f"   {config['description']}")
+        print(f"   Expected: {config['expected']}")
+        print(f"   Command: python test_api_params.py --scenario {name}")
+
+
+def resolve_param(
+    scenario: Optional[Dict[str, Any]], param_name: str, cli_value: Any
+) -> Any:
+    """Resolve parameter value: scenario override > CLI value > built-in default."""
+    if scenario and param_name in scenario:
+        return scenario[param_name]
+    return cli_value
+
+
+def resolve_all_params(
+    scenario: Optional[Dict[str, Any]], args: argparse.Namespace
+) -> Dict[str, Any]:
+    """Resolve all parameters using priority: scenario > cli arg > default."""
+    resolved_params: Dict[str, Any] = {}
+    # Provide safe defaults for missing attributes
+    defaults: Dict[str, Any] = {
+        "decorator_configs": sizes,
+        "runtime_configs": None,
+        "benchmark_type": "default",
+    }
+    for param in [
+        "decorator_configs",
+        "runtime_configs",
+        "metrics",
+        "runs",
+        "replay_mode",
+        "normalize_against",
+        "clock_control",
+        "cache_control",
+        "thermal_control",
+        "output",
+        "output_prefix",
+        "benchmark_type",
+        "plot_title",
+        "plot_metric",
+        "plot_filename",
+        "plot_type",
+        "plot_print_data",
+        "annotate1",
+        "annotate2",
+        "annotate3",
+    ]:
+        value = getattr(args, param, defaults.get(param, None))
+        resolved_params[param] = resolve_param(scenario, param, value)
+    return resolved_params
+
+
+def comma_separated_strings(value: str) -> list[str]:
+    return [v.strip() for v in value.split(",") if v.strip()]
+
 
 def get_app_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Test with command line options to test parameters for nsight.annotate(), nsight.analyze.kernel() and nsight.analyze.plot()."
     )
-    # nsight.analyze.kernel() parameters
-    # TBD no command line arguments yet for: configs, derive_metric, ignore_kernel_list, combine_kernel_metrics
+
+    # Add scenario selection
     parser.add_argument(
-        "--metrics", "-m", default=["dram__bytes.sum.per_second"], help="Metric name"
+        "--scenario",
+        "-sc",
+        choices=TEST_SCENARIOS.keys(),
+        default=None,
+        help="Select test scenario to run",
+    )
+
+    parser.add_argument(
+        "--list-scenarios",
+        "-ls",
+        action="store_true",
+        help="List all available test scenarios",
+    )
+
+    # nsight.analyze.kernel() parameters
+    # TBD no command line arguments yet for: derive_metric, ignore_kernel_list, combine_kernel_metrics
+    parser.add_argument(
+        "--metrics",
+        "-m",
+        default=["dram__bytes.sum.per_second"],
+        help="Metric name",
+        nargs="+",
     )
     parser.add_argument("--runs", "-r", type=int, default=10, help="Number of runs")
     parser.add_argument("--replay-mode", "-p", default="kernel", help="Replay mode")
@@ -52,6 +189,7 @@ def get_app_args() -> argparse.Namespace:
     # nsight.analyze.plot() parameters
     # TBD no command line arguments yet for: row_panels, col_panels, x_keys, annotate_points, show_aggregate
     parser.add_argument("--plot-title", "-l", default="test", help="Plot title")
+    parser.add_argument("--plot-metric", "-e", default=None, help="Plot metric")
     parser.add_argument(
         "--plot-filename", "-f", default="params_test1.png", help="Plot filename"
     )
@@ -77,46 +215,110 @@ def get_app_args() -> argparse.Namespace:
 def main(argv: List[str]) -> None:
     args = get_app_args()
 
-    for key, value in vars(args).items():
-        print(f"{key}: {value}")
+    if args.list_scenarios:
+        list_scenarios()
+        return
 
-    @nsight.annotate(args.annotate2)
-    def einsum(a: torch.Tensor, b: torch.Tensor) -> Any:
-        return torch.einsum("ij,jk->ik", a, b)
+    # Get scenario if any
+    scenario = TEST_SCENARIOS.get(args.scenario, None)
 
-    @nsight.analyze.plot(
-        title=args.plot_title,
-        filename=args.plot_filename,
-        plot_type=args.plot_type,
-        print_data=args.plot_print_data,
-    )
-    @nsight.analyze.kernel(
-        configs=sizes,
-        runs=args.runs,
-        metrics=args.metrics,
-        replay_mode=args.replay_mode,
-        normalize_against=args.normalize_against,
-        clock_control=args.clock_control,
-        cache_control=args.cache_control,
-        thermal_control=args.thermal_control,
-        output=args.output,
-        output_prefix=args.output_prefix,
-    )
-    def run_benchmark(n: int) -> None:
-        a = torch.randn(n, n, device="cuda")
-        b = torch.randn(n, n, device="cuda")
+    params = resolve_all_params(scenario, args)
 
-        _ = a @ b  # workaround for cuInit() issue
+    # Print resolved parameters
+    print(f"\nParameters:")
+    print("=" * 50)
+    for key, value in params.items():
+        print(f"   {key}: {value}")
 
-        with nsight.annotate(args.annotate1):
-            _ = a @ b
+    if scenario:
+        print("=" * 50)
+        print(f"\n# Running Scenario: {args.scenario}")
+        print(f"# Description: {scenario['description']}")
+        print(f"# Expected Result: {scenario['expected']}")
 
-        einsum(a, b)
+    # Build kernel decorator parameters
+    kernel_kwargs = {
+        "runs": params["runs"],
+        "metrics": params["metrics"],
+        "replay_mode": params["replay_mode"],
+        "normalize_against": params["normalize_against"],
+        "clock_control": params["clock_control"],
+        "cache_control": params["cache_control"],
+        "thermal_control": params["thermal_control"],
+        "output": params["output"],
+        "output_prefix": params["output_prefix"],
+    }
 
-        with nsight.annotate(args.annotate3):
-            _ = torch.nn.functional.linear(a, b)
+    if params["decorator_configs"] is not None:
+        kernel_kwargs["configs"] = params["decorator_configs"]
 
-    run_benchmark()
+    # Select benchmark based on benchmark_type
+    benchmark_type = params["benchmark_type"]
+
+    if benchmark_type == "variable_kernels":
+        # Benchmark that launches different numbers of kernels per config
+        @nsight.analyze.kernel(**kernel_kwargs)
+        def run_benchmark(n: int) -> None:
+            a = torch.randn(n, n, device="cuda")
+            b = torch.randn(n, n, device="cuda")
+
+            # Conditionally launch different numbers of kernels
+            with nsight.annotate("variable_kernels"):
+                if n >= 2048:
+                    _ = a @ b  # Kernel 1: matmul
+                    _ = a + b  # Kernel 2: elementwise add
+                else:
+                    _ = a @ b  # Kernel 1: matmul
+
+    elif benchmark_type == "multiple_kernels":
+        # Benchmark that launches multiple different kernels in one annotation
+        @nsight.analyze.kernel(**kernel_kwargs)
+        def run_benchmark(n: int) -> None:
+            a = torch.randn(n, n, device="cuda")
+            b = torch.randn(n, n, device="cuda")
+
+            # Launch MULTIPLE DIFFERENT kernels in the same annotation
+            with nsight.annotate("multiple_kernels"):
+                _ = a @ b  # Kernel 1: matmul
+                _ = a + b  # Kernel 2: elementwise add
+
+    else:
+        # Default benchmark with multiple annotations
+        @nsight.annotate(params["annotate2"])
+        def einsum(a: torch.Tensor, b: torch.Tensor) -> Any:
+            return torch.einsum("ij,jk->ik", a, b)
+
+        @nsight.analyze.kernel(**kernel_kwargs)
+        def run_benchmark(n: int) -> None:
+            a = torch.randn(n, n, device="cuda")
+            b = torch.randn(n, n, device="cuda")
+
+            with nsight.annotate(params["annotate1"]):
+                _ = a @ b
+
+            einsum(a, b)
+
+            with nsight.annotate(params["annotate3"]):
+                _ = torch.nn.functional.linear(a, b)
+
+    # Apply plot decorator once to the selected benchmark
+    run_benchmark = nsight.analyze.plot(
+        title=params["plot_title"],
+        filename=params["plot_filename"],
+        plot_type=params["plot_type"],
+        print_data=params["plot_print_data"],
+    )(run_benchmark)
+
+    # Execute the test
+    try:
+        if params["runtime_configs"] is not None:
+            run_benchmark(configs=params["runtime_configs"])
+        else:
+            run_benchmark()
+
+    except Exception as e:
+        print("=" * 50)
+        print(f"\nERROR: {e}")
 
 
 if __name__ == "__main__":

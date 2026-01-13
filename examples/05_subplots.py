@@ -28,16 +28,17 @@ transpose = [False, True]
 configs = list(itertools.product(sizes, dtypes, transpose))
 
 
-def compute_tflops(time_ns: float, *conf: Any) -> float:
+def compute_tflops(time_ns: float, *conf: Any) -> dict[str, float]:
     """Compute TFLOPs/s using *conf to extract only what we need."""
     n: int = conf[0]  # Extract size (dtype and transpose not needed)
     flops = 2 * n * n * n
     tflops: float = flops / (time_ns / 1e9) / 1e12
-    return tflops
+    return {"TFLOPS": tflops}
 
 
 @nsight.analyze.plot(
     filename="05_subplots.png",
+    metric="TFLOPS",
     title="Matrix Multiplication Performance",
     ylabel="TFLOPs/s",
     row_panels=["dtype"],  # Create row for each dtype
@@ -61,7 +62,8 @@ def benchmark_with_subplots(n: int, dtype: torch.dtype, transpose: bool) -> None
 
 
 def main() -> None:
-    benchmark_with_subplots()
+    result = benchmark_with_subplots()
+    print(result.to_dataframe())
     print("✓ Subplot benchmark complete! Check '05_subplots.png'")
 
 

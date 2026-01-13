@@ -15,21 +15,21 @@ import torch
 
 import nsight
 
-sizes = [(2**i,) for i in range(10, 13)]
+sizes = [(2**i,) for i in range(10, 12)]
 
 
-def compute_avg_insts(
+def compute_insts_statistics(
     ld_insts: int, st_insts: int, launch_sm_count: int, n: int
-) -> float:
+) -> dict[str, float]:
     """
-    Compute average shared memory load/store instructions per SM.
+    Compute shared memory instruction statistics per SM.
 
     Custom metric function signature:
     - First several arguments: the measured metrics, must match the order
-      of metrics in @kernel decorator
+      of metrics specified in the @kernel decorator
     - Remaining arguments: must match the decorated function's signature
 
-    In this example:
+    In this example (metrics must be listed in this exact order in @kernel):
     - ld_insts: Total shared memory load instructions
                 (from smsp__inst_executed_pipe_lsu.shared_op_ld.sum metric)
     - st_insts: Total shared memory store instructions
@@ -45,21 +45,35 @@ def compute_avg_insts(
         n: Matrix size (n x n) - parameter from the decorated benchmark function
 
     Returns:
-        Average shared memory load/store instructions per SM
+        Dictionary containing four derived metrics:
+        - "ld_insts_per_sm": Average load instructions per SM
+        - "st_insts_per_sm": Average store instructions per SM
+        - "insts_total": Total shared memory instructions (load + store)
+        - "insts_per_sm": Average total instructions per SM
     """
+    ld_insts_per_sm = ld_insts / launch_sm_count
+    st_insts_per_sm = st_insts / launch_sm_count
+    insts_total = ld_insts + st_insts
     insts_per_sm = (ld_insts + st_insts) / launch_sm_count
-    return insts_per_sm
+
+    return {
+        "ld_insts_per_sm": ld_insts_per_sm,
+        "st_insts_per_sm": st_insts_per_sm,
+        "insts_total": insts_total,
+        "insts_per_sm": insts_per_sm,
+    }
 
 
 @nsight.analyze.plot(
     filename="09_advanced_metric_custom.png",
+    metric="insts_per_sm",
     ylabel="Average Shared Memory Load/Store Instructions per SM",  # Custom y-axis label
     annotate_points=True,  # Show values on the plot
 )
 @nsight.analyze.kernel(
     configs=sizes,
     runs=10,
-    derive_metric=compute_avg_insts,  # Use custom metric
+    derive_metric=compute_insts_statistics,  # Use custom metric
     metrics=[
         "smsp__sass_inst_executed_op_shared_ld.sum",
         "smsp__sass_inst_executed_op_shared_st.sum",
@@ -72,9 +86,14 @@ def benchmark_avg_insts(n: int) -> None:
     """
     a = torch.randn(n, n, device="cuda")
     b = torch.randn(n, n, device="cuda")
+    c = torch.randn(2 * n, 2 * n, device="cuda")
+    d = torch.randn(2 * n, 2 * n, device="cuda")
 
-    with nsight.annotate("matmul"):
+    with nsight.annotate("@-operator"):
         _ = a @ b
+
+    with nsight.annotate("torch-matmul"):
+        _ = torch.matmul(c, d)
 
 
 def main() -> None:
