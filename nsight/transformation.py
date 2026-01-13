@@ -117,7 +117,9 @@ def aggregate_data(
     )
 
     # Compute relative standard deviation as a percentage
-    agg_df["RelativeStdDevPct"] = (agg_df["StdDev"] / agg_df["AvgValue"].replace(0, np.nan)) * 100
+    agg_df["RelativeStdDevPct"] = (
+        agg_df["StdDev"] / agg_df["AvgValue"].replace(0, np.nan)
+    ) * 100
 
     # Flag measurements as stable if relative stddev is less than 2%
     agg_df["StableMeasurement"] = agg_df["RelativeStdDevPct"] < 2.0
