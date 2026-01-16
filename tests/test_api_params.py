@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import argparse
-import sys
-from typing import Any, Dict, List, Optional
+"""
+pytest tests for API parameter validation.
+"""
+import re
+from typing import Any, Callable, Dict
 
+import pytest
 import torch
 
 import nsight
@@ -21,28 +24,28 @@ TEST_SCENARIOS: Dict[str, Dict[str, Any]] = {
         "description": "No configs provided - should error",
         "decorator_configs": None,
         "runtime_configs": None,
-        "expected": "ERROR: You have provided no configs. Provide configs at decoration time or at runtime.",
+        "expected": "You have provided no configs. Provide configs at decoration time or at runtime.",
     },
     "empty_configs": {
         "description": "Empty configs list - should error",
         "decorator_configs": [],
-        "expected": "ERROR: configs list cannot be empty",
+        "expected": "configs cannot be empty",
     },
     "both_configs": {
         "description": "Both decorator and runtime configs - should error",
         "runtime_configs": [(1024,), (2048,)],
-        "expected": "ERROR: You have provided configs at decoration time and at runtime. Provide configs at decoration time or at runtime.",
+        "expected": "You have provided configs at decoration time and at runtime. Provide configs at decoration time or at runtime.",
         # Note: decorator_configs is not set here, so the default 'sizes' will be used.
     },
     "mismatched_lengths": {
         "description": "Configs with different argument counts - should error",
         "decorator_configs": [(1024,), (2048, 512), (4096,)],
-        "expected": "ERROR: All configs must have the same number of arguments. Found lengths: [1, 2, 1]",
+        "expected": "All configs must have the same number of arguments. Found lengths: [1, 2, 1]",
     },
     "wrong_arg_count": {
         "description": "Configs have wrong number of arguments for function - should error",
         "decorator_configs": [(1024, 512), (2048, 1024)],
-        "expected": "ERROR: Configs have 2 arguments, but function expects 1",
+        "expected": "Configs have 2 arguments, but function expects 1",
     },
     # ==========================================================================
     # RuntimeError scenarios
@@ -52,209 +55,27 @@ TEST_SCENARIOS: Dict[str, Dict[str, Any]] = {
         "decorator_configs": [(1024,), (2048,)],
         "benchmark_type": "variable_kernels",
         "runs": 1,
-        "expected": "ERROR: Expect same number of kernels per run. Got average of 1.5 per run",
+        "expected": "Expect same number of kernels per run",
     },
     "multiple_kernels_no_combine": {
         "description": "RuntimeError: More than one kernel is launched within annotation",
         "decorator_configs": [(2048,)],
         "benchmark_type": "multiple_kernels",
         "runs": 1,
-        "expected": "ERROR: More than one (total=2) kernel is launched within the annotation\n We expect one kernel per annotation\n Try one of the following solutions:\n   - Use `replay_mode='range'` to profile the entire annotated range instead of individual kernels\n   - Use `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n   - Add some of the kernels to the ignore_kernel_list\n Kernels are:\n <list of 2 kernel names>",
+        "expected": "More than one .* kernel is launched",
     },
 }
 
 
-def list_scenarios() -> None:
-    """
-    Print all available test scenarios.
-    """
-    print("Available Test Scenarios:")
-    print("=" * 50)
-
-    for name, config in TEST_SCENARIOS.items():
-        print(f"\n{name}:")
-        print(f"   {config['description']}")
-        print(f"   Expected: {config['expected']}")
-        print(f"   Command: python test_api_params.py --scenario {name}")
-
-
-def resolve_param(
-    scenario: Optional[Dict[str, Any]], param_name: str, cli_value: Any
+def create_benchmark(
+    benchmark_type: str,
+    kernel_kwargs: Dict[str, Any],
+    params: Dict[str, Any] | None = None,
 ) -> Any:
-    """Resolve parameter value: scenario override > CLI value > built-in default."""
-    if scenario and param_name in scenario:
-        return scenario[param_name]
-    return cli_value
-
-
-def resolve_all_params(
-    scenario: Optional[Dict[str, Any]], args: argparse.Namespace
-) -> Dict[str, Any]:
-    """Resolve all parameters using priority: scenario > cli arg > default."""
-    resolved_params: Dict[str, Any] = {}
-    # Provide safe defaults for missing attributes
-    defaults: Dict[str, Any] = {
-        "decorator_configs": sizes,
-        "runtime_configs": None,
-        "benchmark_type": "default",
-    }
-    for param in [
-        "decorator_configs",
-        "runtime_configs",
-        "metrics",
-        "runs",
-        "replay_mode",
-        "normalize_against",
-        "clock_control",
-        "cache_control",
-        "thermal_control",
-        "output",
-        "output_prefix",
-        "benchmark_type",
-        "plot_title",
-        "plot_metric",
-        "plot_filename",
-        "plot_type",
-        "plot_print_data",
-        "annotate1",
-        "annotate2",
-        "annotate3",
-    ]:
-        value = getattr(args, param, defaults.get(param, None))
-        resolved_params[param] = resolve_param(scenario, param, value)
-    return resolved_params
-
-
-def comma_separated_strings(value: str) -> list[str]:
-    return [v.strip() for v in value.split(",") if v.strip()]
-
-
-def get_app_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Test with command line options to test parameters for nsight.annotate(), nsight.analyze.kernel() and nsight.analyze.plot()."
-    )
-
-    # Add scenario selection
-    parser.add_argument(
-        "--scenario",
-        "-sc",
-        choices=TEST_SCENARIOS.keys(),
-        default=None,
-        help="Select test scenario to run",
-    )
-
-    parser.add_argument(
-        "--list-scenarios",
-        "-ls",
-        action="store_true",
-        help="List all available test scenarios",
-    )
-
-    # nsight.analyze.kernel() parameters
-    # TBD no command line arguments yet for: derive_metric, ignore_kernel_list, combine_kernel_metrics
-    parser.add_argument(
-        "--metrics",
-        "-m",
-        default=["dram__bytes.sum.per_second"],
-        help="Metric name",
-        nargs="+",
-    )
-    parser.add_argument("--runs", "-r", type=int, default=10, help="Number of runs")
-    parser.add_argument("--replay-mode", "-p", default="kernel", help="Replay mode")
-    parser.add_argument(
-        "--normalize-against", "-n", default=None, help="Value to normalize against"
-    )
-    parser.add_argument(
-        "--clock-control", "-c", default="none", help="Clock control value"
-    )
-    parser.add_argument(
-        "--cache-control", "-a", default="all", help="Cache control value"
-    )
-    parser.add_argument(
-        "--thermal-control",
-        "-t",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Enable or disable thermal control",
-    )
-    parser.add_argument(
-        "--output", "-o", default="progress", help="Output verbosity level"
-    )
-    parser.add_argument(
-        "--output-prefix",
-        "-op",
-        default=None,
-        help="Select the output prefix of the intermediate profiler files",
-    )
-    # nsight.analyze.plot() parameters
-    # TBD no command line arguments yet for: row_panels, col_panels, x_keys, annotate_points, show_aggregate
-    parser.add_argument("--plot-title", "-l", default="test", help="Plot title")
-    parser.add_argument("--plot-metric", "-e", default=None, help="Plot metric")
-    parser.add_argument(
-        "--plot-filename", "-f", default="params_test1.png", help="Plot filename"
-    )
-    parser.add_argument("--plot-type", "-y", default="line", help="Plot type")
-    parser.add_argument(
-        "--plot-print-data",
-        "-i",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable or disable printing plot data",
-    )
-
-    # nsight.annotate() parameters
-    parser.add_argument("--annotate1", "-1", default="matmul", help="Annotation name 1")
-    parser.add_argument("--annotate2", "-2", default="einsum", help="Annotation name 2")
-    parser.add_argument("--annotate3", "-3", default="linear", help="Annotation name 3")
-
-    args = parser.parse_args()
-
-    return args
-
-
-def main(argv: List[str]) -> None:
-    args = get_app_args()
-
-    if args.list_scenarios:
-        list_scenarios()
-        return
-
-    # Get scenario if any
-    scenario = TEST_SCENARIOS.get(args.scenario, None)
-
-    params = resolve_all_params(scenario, args)
-
-    # Print resolved parameters
-    print(f"\nParameters:")
-    print("=" * 50)
-    for key, value in params.items():
-        print(f"   {key}: {value}")
-
-    if scenario:
-        print("=" * 50)
-        print(f"\n# Running Scenario: {args.scenario}")
-        print(f"# Description: {scenario['description']}")
-        print(f"# Expected Result: {scenario['expected']}")
-
-    # Build kernel decorator parameters
-    kernel_kwargs = {
-        "runs": params["runs"],
-        "metrics": params["metrics"],
-        "replay_mode": params["replay_mode"],
-        "normalize_against": params["normalize_against"],
-        "clock_control": params["clock_control"],
-        "cache_control": params["cache_control"],
-        "thermal_control": params["thermal_control"],
-        "output": params["output"],
-        "output_prefix": params["output_prefix"],
-    }
-
-    if params["decorator_configs"] is not None:
-        kernel_kwargs["configs"] = params["decorator_configs"]
-
-    # Select benchmark based on benchmark_type
-    benchmark_type = params["benchmark_type"]
-
+    """
+    Helper function to create benchmark based on type.
+    Used by both pytest and CLI.
+    """
     if benchmark_type == "variable_kernels":
         # Benchmark that launches different numbers of kernels per config
         @nsight.analyze.kernel(**kernel_kwargs)
@@ -262,7 +83,6 @@ def main(argv: List[str]) -> None:
             a = torch.randn(n, n, device="cuda")
             b = torch.randn(n, n, device="cuda")
 
-            # Conditionally launch different numbers of kernels
             with nsight.annotate("variable_kernels"):
                 if n >= 2048:
                     _ = a @ b  # Kernel 1: matmul
@@ -276,7 +96,6 @@ def main(argv: List[str]) -> None:
         def run_benchmark(n: int) -> None:
             a = torch.randn(n, n, device="cuda")
             b = torch.randn(n, n, device="cuda")
-
             # Launch MULTIPLE DIFFERENT kernels in the same annotation
             with nsight.annotate("multiple_kernels"):
                 _ = a @ b  # Kernel 1: matmul
@@ -284,6 +103,9 @@ def main(argv: List[str]) -> None:
 
     else:
         # Default benchmark with multiple annotations
+        if params is None:
+            raise ValueError("params cannot be None")
+
         @nsight.annotate(params["annotate2"])
         def einsum(a: torch.Tensor, b: torch.Tensor) -> Any:
             return torch.einsum("ij,jk->ik", a, b)
@@ -301,25 +123,104 @@ def main(argv: List[str]) -> None:
             with nsight.annotate(params["annotate3"]):
                 _ = torch.nn.functional.linear(a, b)
 
-    # Apply plot decorator once to the selected benchmark
-    run_benchmark = nsight.analyze.plot(
-        title=params["plot_title"],
-        filename=params["plot_filename"],
-        plot_type=params["plot_type"],
-        print_data=params["plot_print_data"],
-    )(run_benchmark)
+    return run_benchmark
 
-    # Execute the test
-    try:
-        if params["runtime_configs"] is not None:
-            run_benchmark(configs=params["runtime_configs"])
+
+# =============================================================================
+# pytest Tests
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "scenario_name",
+    [
+        "no_configs",
+        "empty_configs",
+        "both_configs",
+        "mismatched_lengths",
+        "wrong_arg_count",
+    ],
+)  # type: ignore[untyped-decorator]
+def test_config_validation_errors(scenario_name: str) -> None:
+    """Test that config validation errors are raised correctly."""
+    scenario = TEST_SCENARIOS[scenario_name]
+
+    # Build kernel kwargs
+    kernel_kwargs = {
+        "runs": scenario.get("runs", 1),
+        "metrics": ["dram__bytes.sum.per_second"],
+        "replay_mode": "kernel",
+        "clock_control": "none",
+        "cache_control": "all",
+        "thermal_control": True,
+        "output": "quiet",
+    }
+
+    if "decorator_configs" in scenario:
+        if scenario["decorator_configs"] is not None:
+            kernel_kwargs["configs"] = scenario["decorator_configs"]
+    else:
+        kernel_kwargs["configs"] = sizes
+
+    # Create params for benchmark creation
+    params = {
+        "annotate1": "matmul",
+        "annotate2": "einsum",
+        "annotate3": "linear",
+    }
+
+    benchmark_type = scenario.get("benchmark_type", "default")
+    run_benchmark = create_benchmark(benchmark_type, kernel_kwargs, params)
+
+    # Assert error is raised
+    with pytest.raises(Exception) as exc_info:
+        if scenario.get("runtime_configs"):
+            run_benchmark(configs=scenario["runtime_configs"])
         else:
             run_benchmark()
 
-    except Exception as e:
-        print("=" * 50)
-        print(f"\nERROR: {e}")
+    # Verify error message matches expected
+    error_msg = str(exc_info.value)
+    expected_msg = scenario["expected"]
+
+    assert re.search(
+        re.escape(expected_msg), error_msg, re.IGNORECASE
+    ), f"Expected error message to contain: '{expected_msg}'\nActual error: '{error_msg}'"
 
 
-if __name__ == "__main__":
-    main(sys.argv[1:])
+@pytest.mark.parametrize(
+    "scenario_name",
+    [
+        "inconsistent_kernel_counts",
+        "multiple_kernels_no_combine",
+    ],
+)  # type: ignore[untyped-decorator]
+def test_runtime_extraction_errors(scenario_name: str) -> None:
+    """Test that runtime extraction errors are raised correctly."""
+    scenario = TEST_SCENARIOS[scenario_name]
+
+    kernel_kwargs = {
+        "runs": 1,
+        "metrics": ["dram__bytes.sum.per_second"],
+        "configs": scenario["decorator_configs"],
+        "replay_mode": "kernel",
+        "clock_control": "none",
+        "cache_control": "all",
+        "thermal_control": True,
+        "output": "quiet",
+    }
+
+    benchmark_type = scenario.get("benchmark_type", "default")
+    run_benchmark = create_benchmark(benchmark_type, kernel_kwargs)
+
+    # Assert RuntimeError is raised with expected message
+    with pytest.raises(RuntimeError) as exc_info:
+        run_benchmark()
+
+    # Verify error message matches expected
+    error_msg = str(exc_info.value)
+    expected_msg = scenario["expected"]
+
+    assert re.search(
+        expected_msg, error_msg, re.IGNORECASE
+    ), f"Expected error message to match pattern: '{expected_msg}'\nActual error: '{error_msg}'"
