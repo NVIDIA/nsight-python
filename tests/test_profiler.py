@@ -1068,6 +1068,13 @@ def test_parameter_output(
             "invalid_multiple",
             id="invalid_multiple",
         ),
+        pytest.param(
+            [
+                "sm__idc_divergent_instructions.avg",
+            ],
+            "valid_single_zero",
+            id="valid_single_zero",
+        ),
     ],
 )
 def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None:
@@ -1099,6 +1106,16 @@ def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None
         assert (
             df["AvgValue"].notna() & df["AvgValue"] > 0
         ).all(), f"Invalid AvgValue for metric {metrics}"
+    elif expected_result == "valid_single_zero":
+        profile_output = profiled_func()
+        df = profile_output.to_dataframe()
+
+        # Verify that zero values are handled correctly
+        # For sm__idc_divergent_instructions, the value should be zero
+        # since simple add operations don't have divergent instructions
+        assert (
+            df["AvgValue"] == 0
+        ).all(), f"Expected zero value for metric {metrics[0]} in simple kernels, got {df['AvgValue'].tolist()}"
     elif expected_result == "invalid_multiple":
         with pytest.raises(
             ValueError,
