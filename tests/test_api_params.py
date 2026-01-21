@@ -4,6 +4,7 @@
 """
 pytest tests for API parameter validation.
 """
+
 import re
 from typing import Any, Callable, Dict
 

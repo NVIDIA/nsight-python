@@ -7,6 +7,7 @@ Visualization utilities for Nsight Python profiling and tensor difference analys
 This module provides:
     - Plotting functions for profiling results with configurable layout and annotation.
 """
+
 from collections.abc import Callable, Sequence
 from typing import Any
 
