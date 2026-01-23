@@ -131,6 +131,9 @@ def aggregate_data(
     agg_df = agg_df.sort_values("_original_order").reset_index(drop=True)
     agg_df = agg_df.drop("_original_order", axis=1)  # Remove the helper column
 
+    # Add Normalized column (always present for consistency)
+    agg_df["Normalized"] = False
+
     do_normalize = normalize_against is not None
     if do_normalize:
         assert (
@@ -152,12 +155,10 @@ def aggregate_data(
         agg_df = pd.merge(agg_df, normalization_df, on=merge_on)
 
         # Normalize the AvgValue by the values of the normalization annotation
-        agg_df["AvgValue"] = agg_df["NormalizationValue"] / agg_df["AvgValue"]
+        agg_df["AvgValue"] = agg_df["AvgValue"] / agg_df["NormalizationValue"]
 
-        # Update the metric name to reflect the normalization
-        agg_df["Metric"] = (
-            agg_df["Metric"].astype(str) + f" relative to {normalize_against}"
-        )
+        # Set the Normalized column to indicate normalization was applied
+        agg_df["Normalized"] = normalize_against
 
     # Calculate the geometric mean of the AvgValue column
     agg_df["Geomean"] = agg_df.groupby(groupby_columns)["AvgValue"].transform(

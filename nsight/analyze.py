@@ -118,8 +118,8 @@ def kernel(
 
             See the examples for concrete use cases.
         normalize_against:
-            Annotation name to normalize metrics against.
-            This is useful to compute relative metrics like speedup.
+            Annotation name to normalize metrics against (computes current / baseline).
+            Combine with ``derive_metric`` to compute speedup (reciprocal of normalized value).
         metrics: The metrics to collect. By default, kernel runtimes in nanoseconds
             are collected. Default: ``["gpu__time_duration.sum"]``. To see the available
             metrics on your system, use the command: ``ncu --query-metrics``.

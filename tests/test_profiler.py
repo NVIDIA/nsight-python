@@ -589,9 +589,6 @@ def normalize_against_multiple_metrics(n: int) -> None:
         _ = c + d
 
 
-@pytest.mark.xfail(  # type: ignore[untyped-decorator]
-    reason="Waiting for proper support for standard normalization and speedup computation"
-)
 def test_parameter_normalize_against_multiple_metrics() -> None:
     profile_output = normalize_against_multiple_metrics()
     if profile_output is not None:
@@ -609,11 +606,13 @@ def test_parameter_normalize_against_multiple_metrics() -> None:
                 subset = df[(df["Annotation"] == annotation) & (df["n"] == n)]
                 assert len(subset) == len(requested_metrics)
 
+                # Check that metric names are unchanged (not modified by normalization)
                 actual_metrics = subset["Metric"].tolist()
-                expected_metrics = [
-                    m + " relative to annotation1" for m in requested_metrics
-                ]
-                assert all(metric in actual_metrics for metric in expected_metrics)
+                assert all(metric in actual_metrics for metric in requested_metrics)
+
+        # Check that Normalized column is present and set to "annotation1"
+        assert "Normalized" in df.columns
+        assert (df["Normalized"] == "annotation1").all()
 
         # AvgValue for the annotation being used as normalization factor should be 1
         assert (df.loc[df["Annotation"] == "annotation1", "AvgValue"] == 1).all()

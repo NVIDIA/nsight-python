@@ -418,9 +418,24 @@ def visualize(
                 ax.grid(True, linestyle="--", alpha=0.7)
                 ax.set_axisbelow(True)  # Put grid behind the plot elements
 
-            ylabel = ylabel or agg_df["Metric"].unique()[0]
+            # Construct ylabel from metric name and normalization info
+            if ylabel:
+                # User provided an explicit ylabel, use it as-is
+                ylabel_text = ylabel
+            else:
+                # No explicit ylabel - use metric name and add normalization info if present
+                ylabel_text = agg_df["Metric"].unique()[0]
+                # Check if data is normalized and add annotation to ylabel
+                normalized_values = agg_df["Normalized"].unique()
+                assert (
+                    len(normalized_values) == 1
+                ), "Normalized column should have exactly one unique value"
+                normalized_against = normalized_values[0]
+                if normalized_against is not False:
+                    ylabel_text = f"{ylabel_text} relative to {normalized_against}"
+
             if col_idx == 0:
-                ax.set_ylabel(f"{ylabel} (avg: {agg_df['NumRuns'].max()} runs)")
+                ax.set_ylabel(f"{ylabel_text} (avg: {agg_df['NumRuns'].max()} runs)")
 
             # Generate combined subplot title with both row and col fields
             row_label = "\n".join(

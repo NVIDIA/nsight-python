@@ -13,6 +13,7 @@ New concepts:
 - Using `variant_fields` to create separate lines for different parameter values
 - Using `variant_annotations` to create separate lines for different kernels
 - Comparing performance across block sizes and implementations
+- Computing speedup metric using `normalize_against` and `derive_metric`
 """
 
 import itertools
@@ -65,10 +66,30 @@ block_sizes = [256, 512, 1024, 2048]
 configs = list(itertools.product(sizes, block_sizes))
 
 
+def speedup(metric: float, n: int, block_size: int) -> float:
+    """
+    Compute speedup from normalized timing metric.
+
+    With normalize_against, timing metrics are normalized as: current / baseline
+    To get speedup (where higher is better), take the reciprocal: 1 / normalized
+
+    Args:
+        metric: The normalized metric value (current / baseline)
+        n: Vector size parameter
+        block_size: Triton block size parameter
+
+    Returns:
+        Speedup value (baseline / current)
+    """
+    return 1.0 / metric
+
+
 @nsight.analyze.plot(
     filename="07_triton_minimal.png",
     title="Vector Addition: Triton Speedup vs Block Size",
     ylabel="Speedup vs PyTorch",
+    # Specify which metric to plot when multiple metrics are present
+    metric="speedup",
     # variant_fields creates separate lines for different block_size values
     # This lets you see how performance varies with block size
     variant_fields=["block_size"],
@@ -80,15 +101,17 @@ configs = list(itertools.product(sizes, block_sizes))
 @nsight.analyze.kernel(
     configs=configs,
     runs=10,
-    # Normalize against torch to show speedup (values > 1 = triton is faster)
+    # Normalize against torch baseline
     normalize_against="torch",
+    # Compute speedup by taking reciprocal (speedup > 1 = triton is faster)
+    derive_metric=speedup,
 )
 def benchmark_triton_variants(n: int, block_size: int) -> None:
     """
     Compare Triton with different block sizes against PyTorch baseline.
 
     The plot will show:
-    - Y-axis: Speedup relative to PyTorch (normalized_against="torch")
+    - Y-axis: Speedup relative to PyTorch (normalized + reciprocal via derive_metric)
     - Different lines for each block size (from variant_fields)
     - Only triton kernels shown as separate lines (from variant_annotations)
     - X-axis: Problem size (n)
@@ -109,7 +132,8 @@ def main() -> None:
     benchmark_triton_variants()
     print("✓ Triton benchmark complete! Check '07_triton_minimal.png'")
     print("\nWhat this example demonstrates:")
-    print("- normalize_against='torch' shows speedup relative to PyTorch baseline")
+    print("- normalize_against='torch' normalizes metrics against PyTorch baseline")
+    print("- derive_metric=speedup computes speedup as reciprocal (1 / normalized)")
     print("- variant_fields=['block_size'] creates separate lines for each block size")
     print("- variant_annotations=['triton'] only shows triton variants (not torch)")
     print("  because torch doesn't have tunable parameters like block_size")
