@@ -1,0 +1,14 @@
+[
+  {
+    "version": "latest",
+    "url": "https://docs.nvidia.com/nsight-python/"
+  },
+  {
+    "version": "0.9.5",
+    "url": "https://docs.nvidia.com/nsight-python/0.9.5/"
+  },
+  {
+    "version": "0.9.4",
+    "url": "https://docs.nvidia.com/nsight-python/0.9.4/"
+  }
+]
