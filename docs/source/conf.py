@@ -64,8 +64,10 @@ typehints_use_signature = True
 
 toc_object_entries_show_parents = "all"
 
-html_context = {
-    "release": release,
+html_theme_options = {
+    "switcher": {
+        # TODO:  below json_url to be replaced by https://docs.nvidia.com/nsight-python/_static/switcher.json whenever the docs go live
+        "json_url": "_static/switcher.json",
+        "version_match": release,
+    }
 }
-
-html_theme_options = {"navbar_start": ["navbar-logo", "version"]}
