@@ -24,7 +24,7 @@ from nsight.exceptions import (
 
 # Try to import cuda-core (optional dependency)
 try:
-    from cuda.core.experimental import (
+    from cuda.core import (
         Device,
         LaunchConfig,
         Program,
