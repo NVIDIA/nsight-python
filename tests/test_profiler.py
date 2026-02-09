@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 import pytest
 import torch
-from cuda.core.experimental import Device, LaunchConfig, Program, launch
+from cuda.core import Device, LaunchConfig, Program, launch
 
 import nsight
 from nsight import exceptions
