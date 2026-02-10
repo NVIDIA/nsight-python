@@ -40,7 +40,10 @@ def kernel(
     clock_control: Literal["base", "none"] = "none",
     cache_control: Literal["all", "none"] = "all",
     replay_mode: Literal["kernel", "range"] = "kernel",
-    thermal_control: bool = True,
+    thermal_mode: Literal["auto", "manual", "off"] = "auto",
+    thermal_wait: int | None = None,
+    thermal_cont: int | None = None,
+    thermal_timeout: int | None = None,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
@@ -61,7 +64,10 @@ def kernel(
     clock_control: Literal["base", "none"] = "none",
     cache_control: Literal["all", "none"] = "all",
     replay_mode: Literal["kernel", "range"] = "kernel",
-    thermal_control: bool = True,
+    thermal_mode: Literal["auto", "manual", "off"] = "auto",
+    thermal_wait: int | None = None,
+    thermal_cont: int | None = None,
+    thermal_timeout: int | None = None,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
@@ -153,7 +159,39 @@ def kernel(
 
             Default: ``"kernel"``
 
-        thermal_control : Toggles whether to enable thermal control. Default: ``True``
+        thermal_mode: Controls GPU thermal management mode. Default: ``"auto"``
+
+            Monitors GPU thermal headroom (T.Limit) and pauses profiling when GPU gets
+            too hot, resuming after cooling. Prevents thermal throttling from affecting
+            profiling accuracy.
+
+            **Modes:**
+            - ``"auto"``: Adaptive mode - automatically adjusts thermal_cont threshold based on GPU heating behavior.
+            - ``"manual"``: Fixed mode - uses specified thermal_wait and thermal_cont thresholds without adaptation.
+            - ``"off"``: Thermal control disabled - no monitoring or pausing.
+
+        thermal_wait: Thermal headroom threshold (T.Limit in °C) that triggers cooling pause.
+
+            When GPU thermal headroom drops to this value, profiling pauses and waits
+            for the GPU to cool down. Lower values allow the GPU to run hotter before
+            pausing (more aggressive, faster profiling, higher throttling risk).
+
+            If ``None``, uses default value (10°C). Applied in both "auto" and "manual" modes.
+
+        thermal_cont: Thermal headroom threshold (T.Limit in °C) to resume profiling after cooling.
+
+            After a cooling pause, profiling resumes once GPU thermal headroom reaches
+            this value. Higher values mean the GPU cools more before resuming (safer,
+            fewer cooling cycles, but slower overall profiling time).
+
+            If ``None``, uses default value (20°C). In "auto" mode, this value adapts based on
+            workload characteristics. In "manual" mode, it remains fixed.
+
+            **Requirement:** Must be greater than thermal_wait.
+
+        thermal_timeout: Maximum wait time in seconds for GPU to cool down.
+            Default: 180 seconds
+
         output: Controls the verbosity level of the output.
 
             - ``"quiet"``: Suppresses all output.
@@ -212,6 +250,16 @@ def kernel(
     # Strip whitespace
     metrics = [m.strip() for m in metrics]
 
+    # Validate thermal parameters if both are provided
+    if thermal_wait is not None and thermal_cont is not None:
+        if thermal_cont <= thermal_wait:
+            raise ValueError(
+                f"Invalid thermal control parameters: thermal_cont ({thermal_cont}°C) "
+                f"must be greater than thermal_wait ({thermal_wait}°C). "
+                f"thermal_cont is the target thermal headroom after cooling, "
+                f"thermal_wait is the threshold that triggers cooling."
+            )
+
     def _create_profiler() -> collection.core.NsightProfiler:
         """Helper to create the profiler with the given settings."""
         if output not in ("quiet", "progress", "verbose"):
@@ -238,7 +286,10 @@ def kernel(
             output_detailed=output_detailed,
             derive_metric=derive_metric,
             normalize_against=normalize_against,
-            thermal_control=thermal_control,
+            thermal_mode=thermal_mode,
+            thermal_wait=thermal_wait,
+            thermal_cont=thermal_cont,
+            thermal_timeout=thermal_timeout,
             output_prefix=prefix,
             output_csv=output_csv,
         )

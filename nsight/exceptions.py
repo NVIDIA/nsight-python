@@ -43,6 +43,25 @@ class NCUNotAvailableError(Exception):
     pass
 
 
+class ThermalControlError(Exception):
+    """
+    Base exception for thermal control errors.
+
+    This is raised when GPU thermal management encounters issues that prevent
+    profiling from continuing safely.
+    """
+
+    pass
+
+
+class CoolingTimeoutError(ThermalControlError):
+    """
+    Exception raised when GPU cannot cool to target threshold within timeout period.
+    """
+
+    pass
+
+
 CUDA_CORE_UNAVAILABLE_MSG = "cuda-core is required for ignore_failures functionality.\n Install it with:\n  - pip install nsight-python[cu12]  (if you have CUDA 12.x)\n  - pip install nsight-python[cu13]  (if you have CUDA 13.x)"
 
 

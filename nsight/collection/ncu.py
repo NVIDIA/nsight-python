@@ -276,7 +276,10 @@ class NCUCollector(core.NsightCollector):
                 settings.runs,
                 settings.output_progress,
                 settings.output_detailed,
-                settings.thermal_control,
+                settings.thermal_mode,
+                settings.thermal_wait,
+                settings.thermal_cont,
+                settings.thermal_timeout,
             )
 
             # Exit after profiling to prevent the rest of the script from running

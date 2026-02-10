@@ -153,7 +153,7 @@ def test_config_validation_errors(scenario_name: str) -> None:
         "replay_mode": "kernel",
         "clock_control": "none",
         "cache_control": "all",
-        "thermal_control": True,
+        "thermal_mode": "auto",
         "output": "quiet",
     }
 
@@ -207,7 +207,7 @@ def test_runtime_extraction_errors(scenario_name: str) -> None:
         "replay_mode": "kernel",
         "clock_control": "none",
         "cache_control": "all",
-        "thermal_control": True,
+        "thermal_mode": "auto",
         "output": "quiet",
     }
 
