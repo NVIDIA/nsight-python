@@ -11,7 +11,7 @@ import threading
 import time
 import warnings
 from collections.abc import Callable, Collection, Iterable, Sequence
-from typing import Any, List
+from typing import Any, List, Literal
 
 import numpy as np
 import pandas as pd
@@ -137,15 +137,29 @@ def run_profile_session(
     runs: int,
     output_progress: bool,
     output_detailed: bool,
-    thermal_control: bool,
+    thermal_mode: Literal["auto", "manual", "off"],
+    thermal_wait: int | None = None,
+    thermal_cont: int | None = None,
+    thermal_timeout: int | None = None,
 ) -> None:
 
     if output_progress:
         print("")
         print("")
 
-    if thermal_control:
-        thermovision_initialized = thermovision.init()
+    # Initialize thermal controller if needed (unless mode is "off")
+    thermal_controller = None
+    if thermal_mode != "off":
+        thermal_controller = thermovision.ThermalController(
+            thermal_mode=thermal_mode,
+            thermal_wait=thermal_wait,
+            thermal_cont=thermal_cont,
+            thermal_timeout=thermal_timeout,
+            verbose=output_detailed,
+        )
+        thermovision_initialized = thermal_controller.init()
+        if not thermovision_initialized:
+            thermal_controller = None
 
     total_configs = len(configs)
     total_runs = total_configs * runs
@@ -191,9 +205,8 @@ def run_profile_session(
         for i in range(runs):
             start_time = time.time()
             curr_run += 1
-            if thermal_control:
-                if thermovision_initialized:
-                    thermovision.throttle_guard()
+            if thermal_controller:
+                thermal_controller.throttle_guard()
 
             # Clear active annotations before each run
             annotation.clear_active_annotations()
@@ -286,9 +299,55 @@ class ProfileSettings:
     This is useful to compute relative metrics like speedup.
     """
 
-    thermal_control: bool
+    thermal_mode: Literal["auto", "manual", "off"]
     """
-    Toggles whether to enable thermal control.
+    Controls GPU thermal management mode.
+
+    Monitors GPU thermal headroom (T.Limit) and pauses profiling when GPU gets
+    too hot, resuming after cooling. Prevents thermal throttling from affecting
+    profiling accuracy.
+
+    **T.Limit (Thermal Limit)**
+    T.Limit is the temperature margin before the GPU starts throttling performance
+    to protect itself. It represents: Max_Safe_Temperature - Current_Temperature.
+    - High T.Limit (e.g., 40°C): GPU is cool, plenty of headroom
+    - Low T.Limit (e.g., 5°C): GPU is hot, approaching thermal throttling
+
+    **Modes:**
+    - "auto": Adaptive mode - automatically adjusts thermal_cont threshold based on GPU heating behavior
+    - "manual": Fixed mode - uses specified thermal_wait and thermal_cont thresholds without adaptation
+    - "off": Thermal control disabled.
+    """
+
+    thermal_wait: int | None
+    """
+    Thermal headroom threshold (T.Limit in °C) that triggers cooling pause.
+
+    When GPU thermal headroom drops to this value, profiling pauses and waits
+    for the GPU to cool down. Lower values allow the GPU to run hotter before
+    pausing (more aggressive, faster profiling, higher throttling risk).
+
+    If None, uses default value (10°C). Applied in both "auto" and "manual" modes.
+    """
+
+    thermal_cont: int | None
+    """
+    Thermal headroom threshold (T.Limit in °C) to resume profiling after cooling.
+
+    After a cooling pause, profiling resumes once GPU thermal headroom reaches
+    this value. Higher values mean the GPU cools more before resuming (safer,
+    fewer cooling cycles, but slower overall profiling time).
+
+    If None, uses default value (20°C). In "auto" mode, this value adapts based on
+    workload characteristics. In "manual" mode, it remains fixed.
+
+    **Requirement:** Must be greater than thermal_wait.
+    """
+
+    thermal_timeout: int | None
+    """
+    Maximum wait time in seconds for GPU to cool down.
+    If None, uses default value (180 seconds).
     """
 
     output_prefix: str | None

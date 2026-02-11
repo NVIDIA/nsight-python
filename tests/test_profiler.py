@@ -841,20 +841,20 @@ def test_parameter_cache_control(
 # ============================================================================
 
 
-@pytest.mark.parametrize("thermal_control", [True, False])  # type: ignore[untyped-decorator]
-def test_parameter_thermal_control(thermal_control: bool) -> None:
-    """Test the thermal_control parameter to control thermal waiting."""
+@pytest.mark.parametrize("thermal_mode", ["auto", "manual", "off"])  # type: ignore[untyped-decorator]
+def test_parameter_thermal_mode(thermal_mode: Literal["auto", "manual", "off"]) -> None:
+    """Test the thermal_mode parameter to control thermal waiting."""
 
     @nsight.analyze.kernel(
         configs=[(100, 100)],
         runs=1,
         output="quiet",
-        thermal_control=thermal_control,
+        thermal_mode=thermal_mode,
     )
     def thermal_control_func(x: int, y: int) -> None:
-        _simple_kernel_impl(x, y, "test_thermal_control")
+        _simple_kernel_impl(x, y, "test_thermal_mode")
 
-    # Should complete successfully regardless of thermal_control value
+    # Should complete successfully regardless of thermal_mode value
     profile_output = thermal_control_func()
     assert profile_output is not None, "ProfileResults should be returned"
 

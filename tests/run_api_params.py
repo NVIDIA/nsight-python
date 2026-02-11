@@ -67,7 +67,7 @@ def resolve_all_params(
         "normalize_against",
         "clock_control",
         "cache_control",
-        "thermal_control",
+        "thermal_mode",
         "output",
         "output_prefix",
         "benchmark_type",
@@ -198,7 +198,7 @@ def main(argv: List[str]) -> None:
         "normalize_against": params["normalize_against"],
         "clock_control": params["clock_control"],
         "cache_control": params["cache_control"],
-        "thermal_control": params["thermal_control"],
+        "thermal_mode": params["thermal_mode"],
         "output": params["output"],
         "output_prefix": params["output_prefix"],
     }
