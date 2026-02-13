@@ -166,6 +166,7 @@ def kernel(
             profiling accuracy.
 
             **Modes:**
+
             - ``"auto"``: Adaptive mode - automatically adjusts thermal_cont threshold based on GPU heating behavior.
             - ``"manual"``: Fixed mode - uses specified thermal_wait and thermal_cont thresholds without adaptation.
             - ``"off"``: Thermal control disabled - no monitoring or pausing.
