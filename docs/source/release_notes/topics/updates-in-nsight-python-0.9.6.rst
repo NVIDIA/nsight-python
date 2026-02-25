@@ -4,16 +4,6 @@
 Updates in Nsight Python 0.9.6
 ==============================
 
-Fixes
------
-
-- `Github Issue #13 <https://github.com/NVIDIA/nsight-python/issues/13>`_:
-  Fixed incorrect profiling results when making multiple function calls of the same decorated function.
-
-- `Github Issue #17 <https://github.com/NVIDIA/nsight-python/issues/17>`_:
-  Fixed ``ZeroDivisionError`` when handling zero-valued metrics (e.g., ``sm__idc_divergent_instructions.avg``).
-  Added test coverage for zero-valued metrics to ensure proper handling.
-
 Enhancements
 ------------
 
@@ -33,3 +23,14 @@ Enhancements
   - Added ``thermal_wait`` parameter to specify the thermal headroom threshold (T.Limit in °C) that triggers cooling pause.
   - Added ``thermal_cont`` parameter to specify the thermal headroom threshold (T.Limit in °C) to resume profiling after cooling.
   - Added ``thermal_timeout`` parameter to specify the maximum wait time in seconds for GPU to cool down.
+
+Fixes
+-----
+
+- `Github Issue #13 <https://github.com/NVIDIA/nsight-python/issues/13>`_:
+  Fixed incorrect profiling results when making multiple function calls of the same decorated function.
+
+- `Github Issue #17 <https://github.com/NVIDIA/nsight-python/issues/17>`_:
+  Fixed ``ZeroDivisionError`` when handling zero-valued metrics (e.g., ``sm__idc_divergent_instructions.avg``).
+  Added test coverage for zero-valued metrics to ensure proper handling.
+
