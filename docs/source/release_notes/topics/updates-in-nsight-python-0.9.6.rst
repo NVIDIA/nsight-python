@@ -12,6 +12,7 @@ Fixes
 
 - `Github Issue #17 <https://github.com/NVIDIA/nsight-python/issues/17>`_:
   Fixed ``ZeroDivisionError`` when handling zero-valued metrics (e.g., ``sm__idc_divergent_instructions.avg``).
+  Added test coverage for zero-valued metrics to ensure proper handling.
 
 Enhancements
 ------------
@@ -27,9 +28,3 @@ Enhancements
   - Added **Normalized** column to the output dataframe to indicate which annotation is used for normalization.
 
 - **Adaptive Thermovision**: Replaced ``thermal_control`` boolean parameter with ``thermal_mode`` parameter that accepts ``"auto"``, ``"manual"``, or ``"off"`` values for more flexible thermal throttling control.
-
-Other Changes
--------------
-
-- Improved documentation clarity and fixed gaps in user-facing documentation.
-- Added test coverage for zero-valued metrics to ensure proper handling.
