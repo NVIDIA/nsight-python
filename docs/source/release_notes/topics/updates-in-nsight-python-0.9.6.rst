@@ -20,7 +20,7 @@ Enhancements
 - `Github Issue #11 <https://github.com/NVIDIA/nsight-python/issues/11>`_:
   Added support for **multiple derived metrics** in :func:`nsight.analyze.kernel` using ``derive_metric`` parameter. The ``derive_metric`` function can now return either a single value or a dictionary of multiple metrics.
 
-- Added **metric parameter** to ``@nsight.analyze.plot`` decorator to specify which metric to visualize when multiple metrics are collected.
+- Added **metric parameter** to :func:`nsight.analyze.plot` decorator to specify which metric to visualize when multiple metrics are collected.
 
 - **Normalization improvements** in :func:`nsight.analyze.kernel`:
 
