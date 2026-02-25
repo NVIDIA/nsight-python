@@ -18,16 +18,16 @@ Enhancements
 ------------
 
 - `Github Issue #11 <https://github.com/NVIDIA/nsight-python/issues/11>`_:
-  Added support for **multiple derived metrics** using ``derive_metric`` parameter. The ``derive_metric`` function can now return either a single value or a dictionary of multiple metrics.
+  Added support for **multiple derived metrics** in :func:`nsight.analyze.kernel` using ``derive_metric`` parameter. The ``derive_metric`` function can now return either a single value or a dictionary of multiple metrics.
 
 - Added **metric parameter** to ``@nsight.analyze.plot`` decorator to specify which metric to visualize when multiple metrics are collected.
 
-- **Normalization improvements**:
+- **Normalization improvements** in :func:`nsight.analyze.kernel`:
 
   - Changed ``normalize_against`` to use standard normalization (current/baseline) instead of appending normalization info to metric names.
   - Added **Normalized** column to the output dataframe to indicate which annotation is used for normalization.
 
-- **Adaptive Thermovision**:
+- **Adaptive Thermovision** in :func:`nsight.analyze.kernel`:
 
   - Replaced ``thermal_control`` boolean parameter with ``thermal_mode`` parameter that accepts ``"auto"``, ``"manual"``, or ``"off"`` values for more flexible thermal throttling control.
   - Added ``thermal_wait`` parameter to specify the thermal headroom threshold (T.Limit in °C) that triggers cooling pause.
