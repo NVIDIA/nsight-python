@@ -20,6 +20,7 @@ jobs:
       - name: "Running Lint" 
         run: |
           pip install hatch
+          pip install 'virtualenv<21'
           hatch run lint:check
 
   build-docs:
@@ -32,6 +33,7 @@ jobs:
       - name: "Building Docs" 
         run: |
           pip install hatch
+          pip install 'virtualenv<21'
           hatch run docs:build
 
   test_linux_amd64_gpu_h100_latest:
@@ -44,4 +46,5 @@ jobs:
       - name: "Running Tests" 
         run: |
           pip install hatch
+          pip install 'virtualenv<21'
           hatch run test_cu13:run
