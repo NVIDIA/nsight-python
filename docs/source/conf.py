@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath("../../"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "nsight-python"
-copyright = "2025, NVIDIA"
+copyright = "2025-2026, NVIDIA"
 author = "NVIDIA"
 release = importlib.metadata.version("nsight-python")
 
@@ -66,8 +66,7 @@ toc_object_entries_show_parents = "all"
 
 html_theme_options = {
     "switcher": {
-        # TODO:  below json_url to be replaced by https://docs.nvidia.com/nsight-python/_static/switcher.json whenever the docs go live
-        "json_url": "_static/switcher.json",
+        "json_url": "https://docs.nvidia.com/nsight-python/_static/switcher.json",
         "version_match": release,
     }
 }
