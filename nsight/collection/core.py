@@ -19,6 +19,55 @@ import pandas as pd
 from nsight import annotation, exceptions, thermovision, transformation, utils
 
 
+def _get_regular_params(
+    sig: inspect.Signature,
+) -> list[inspect.Parameter]:
+    """Return the list of regular (non-variadic) parameters from a signature."""
+    return [
+        p for p in sig.parameters.values()
+        if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+
+
+def _count_params(
+    sig: inspect.Signature,
+) -> int:
+    """Count the number of regular (non-variadic) parameters in a signature."""
+    return len(_get_regular_params(sig))
+
+
+def _bind_config_to_signature(
+    sig: inspect.Signature, config: Sequence[Any]
+) -> tuple[list[Any], dict[str, Any]]:
+    """Split a config tuple into positional args and keyword-only kwargs.
+
+    Maps config values to function parameters in declaration order, separating
+    them into positional arguments (for POSITIONAL_OR_KEYWORD params) and
+    keyword arguments (for KEYWORD_ONLY params). VAR_POSITIONAL and VAR_KEYWORD
+    parameters are skipped. Parameters with defaults that are not covered by
+    the config are left for the function to fill in.
+
+    Args:
+        sig: The function's inspect.Signature.
+        config: The config tuple to bind.
+
+    Returns:
+        A (positional_args, keyword_args) tuple ready for func(*pos, **kw).
+    """
+    positional: list[Any] = []
+    keyword: dict[str, Any] = {}
+    config_iter = iter(config)
+    for param in sig.parameters.values():
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        val = next(config_iter)
+        if param.kind == inspect.Parameter.KEYWORD_ONLY:
+            keyword[param.name] = val
+        else:
+            positional.append(val)
+    return positional, keyword
+
+
 def _sanitize_configs(
     func: Callable[..., Any],
     *args: Any,
@@ -60,10 +109,10 @@ def _sanitize_configs(
         - For functions with no parameters, an empty config [()] is created automatically.
         - The function combines `args` and `kwargs` into a single list if `args` are provided.
         - The function assumes that `kwargs` keys are in the expected order when combining.
-        - Only regular positional parameters (``POSITIONAL_OR_KEYWORD``) are used
-          for config validation. ``*args`` and ``**kwargs`` at the end of the
-          signature are tolerated but ignored. Keyword-only parameters (after
-          ``*`` or ``*args``) are not supported and will fail at runtime.
+        - Config values are mapped to parameters in declaration order. Both
+          regular and keyword-only parameters are supported. Parameters with
+          defaults may be omitted from configs. ``*args`` and ``**kwargs``
+          are tolerated but ignored.
     """
     if len(args) > 0:
         # We do not expect any configs in this case
@@ -80,11 +129,8 @@ def _sanitize_configs(
         if decorator_configs is None:
             # Check if function takes no arguments
             sig = inspect.signature(func)
-            expected_arg_count = sum(
-                1 for p in sig.parameters.values()
-                if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-            )
-            if expected_arg_count == 0:
+            param_count = _count_params(sig)
+            if param_count == 0:
                 # For functions with no arguments, create a single empty config
                 # This allows calling the function without requiring explicit configs
                 configs = [()]
@@ -112,11 +158,8 @@ def _sanitize_configs(
 
         # If function takes exactly one argument, allow scalar configs
         sig = inspect.signature(func)
-        expected_arg_count = sum(
-            1 for p in sig.parameters.values()
-            if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        )
-        if expected_arg_count == 1:
+        param_count = _count_params(sig)
+        if param_count == 1:
             normalized_configs: list[Sequence[Any]] = []
             for config in configs:
                 if utils.is_scalar(config):
@@ -133,9 +176,9 @@ def _sanitize_configs(
         first_config_arg_count = config_lengths[0]
 
         # Validate that the number of args matches the number of function parameters
-        if first_config_arg_count != expected_arg_count:
+        if first_config_arg_count != param_count:
             raise exceptions.ProfilerException(
-                f"Configs have {first_config_arg_count} arguments, but function expects {expected_arg_count}"
+                f"Configs have {first_config_arg_count} arguments, but function expects {param_count}"
             )
 
     return configs  # type: ignore[return-value]
@@ -187,18 +230,15 @@ def run_profile_session(
 
     for c in configs:
         sig = inspect.signature(func)
-        expected_arg_count = sum(
-            1 for p in sig.parameters.values()
-            if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        )
+        param_count = _count_params(sig)
 
         # Handle scalar values
-        if expected_arg_count == 1:
+        if param_count == 1:
             if utils.is_scalar(c):
                 c = (c,)
 
         # Check if func supports the input configs
-        if expected_arg_count != len(c):
+        if param_count != len(c):
             raise exceptions.ProfilerException(
                 f"Function '{func.__name__}' does not support the input configuration"
             )
@@ -225,8 +265,10 @@ def run_profile_session(
             # Clear active annotations before each run
             annotation.clear_active_annotations()
 
-            # Run the function with the config
-            result = func(*c)  # type: ignore[func-returns-value]
+            # Run the function with the config, splitting into positional
+            # and keyword-only args based on the function signature
+            pos_args, kw_args = _bind_config_to_signature(sig, c)
+            result = func(*pos_args, **kw_args)  # type: ignore[func-returns-value]
             if result is not None:
                 show_return_type_warning = True
 

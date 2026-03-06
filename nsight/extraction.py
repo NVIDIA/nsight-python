@@ -258,9 +258,11 @@ def extract_df_from_report(
             all_metrics.append(tuple(metrics))
             hostnames.append(socket.gethostname())
             # Add a field for every config argument
-            bound_args = sig.bind(*conf)
-            for name, val in bound_args.arguments.items():
-                arg_arrays[name].append(val)
+            config_iter = iter(conf)
+            for name, param in sig.parameters.items():
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                arg_arrays[name].append(next(config_iter))
 
     # Create the DataFrame with the initial columns
     df_data = {

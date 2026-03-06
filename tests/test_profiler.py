@@ -1259,3 +1259,58 @@ def test_function_with_kwargs() -> None:
     assert len(df) == 1, f"Expected 1 row, got {len(df)}"
     assert df["x"].iloc[0] == 32
     assert df["y"].iloc[0] == 32
+
+
+def test_function_with_keyword_only_params() -> None:
+    """Test that functions with keyword-only parameters work correctly.
+
+    Keyword-only parameters (after * or *args) should be supported —
+    config values are mapped to parameters in declaration order and
+    passed as keyword arguments for keyword-only params.
+    """
+
+    @nsight.analyze.kernel(output="quiet")
+    def kernel_with_kw_only(x: int, *, y: int) -> None:
+        a = torch.randn(x, y, device="cuda")
+        b = torch.randn(x, y, device="cuda")
+        with nsight.annotate("test_kw_only"):
+            _ = a + b
+
+    result = kernel_with_kw_only(configs=[(32, 64)])
+    df = result.to_dataframe()
+
+    assert len(df) == 1, f"Expected 1 row, got {len(df)}"
+    assert df["x"].iloc[0] == 32
+    assert df["y"].iloc[0] == 64
+
+
+def test_function_with_args_and_keyword_only() -> None:
+    """Test that functions with *args and keyword-only params after it work."""
+
+    @nsight.analyze.kernel(output="quiet")
+    def kernel_mixed(x: int, *args: Any, y: int, **kwargs: Any) -> None:
+        a = torch.randn(x, y, device="cuda")
+        b = torch.randn(x, y, device="cuda")
+        with nsight.annotate("test_mixed"):
+            _ = a + b
+
+    result = kernel_mixed(configs=[(32, 64)])
+    df = result.to_dataframe()
+
+    assert len(df) == 1, f"Expected 1 row, got {len(df)}"
+    assert df["x"].iloc[0] == 32
+    assert df["y"].iloc[0] == 64
+
+
+def test_too_many_config_args_rejected() -> None:
+    """Test that configs with more args than total params are rejected."""
+
+    @nsight.analyze.kernel(output="quiet")
+    def kernel_two_params(x: int, y: int) -> None:
+        a = torch.randn(x, y, device="cuda")
+        b = torch.randn(x, y, device="cuda")
+        with nsight.annotate("test"):
+            _ = a + b
+
+    with pytest.raises(exceptions.ProfilerException, match="function expects 2"):
+        kernel_two_params(configs=[(32, 32, 99)])
