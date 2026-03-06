@@ -275,8 +275,9 @@ def extract_df_from_report(
     for arg_name, arg_values in arg_arrays.items():
         df_data[arg_name] = arg_values
 
-    # Explode the dataframe
-    df = pd.DataFrame(df_data).apply(pd.Series.explode).reset_index(drop=True)
+    # Explode only Value and Metric columns (which contain tuples of per-metric data).
+    # Other columns (including function args) may also contain tuples that should NOT be exploded.
+    df = pd.DataFrame(df_data).explode(["Value", "Metric"]).reset_index(drop=True)
 
     if derive_metric is not None:
         transformed_df_data = {
@@ -295,7 +296,7 @@ def extract_df_from_report(
 
         transformed_df = (
             pd.DataFrame(transformed_df_data)
-            .apply(pd.Series.explode)
+            .explode(["Value", "Metric"])
             .reset_index(drop=True)
         )
 
