@@ -1231,3 +1231,31 @@ def test_legalize_metric_in_plot(
         assert all(
             df["AvgValue"].notna() & (df["AvgValue"] > 0)
         ), f"Invalid AvgValue for metric {metrics}"
+
+
+# ============================================================================
+# Functions with **kwargs
+# ============================================================================
+
+
+def test_function_with_kwargs() -> None:
+    """Test that functions with **kwargs in their signature work correctly.
+
+    Regression test: _sanitize_configs counted **kwargs via len(sig.parameters),
+    causing a spurious validation error because the config arg count didn't
+    match the inflated parameter count.
+    """
+
+    @nsight.analyze.kernel(output="quiet")
+    def kernel_with_kwargs(x: int, y: int, **kwargs: Any) -> None:
+        a = torch.randn(x, y, device="cuda")
+        b = torch.randn(x, y, device="cuda")
+        with nsight.annotate("test_kwargs"):
+            _ = a + b
+
+    result = kernel_with_kwargs(configs=[(32, 32)])
+    df = result.to_dataframe()
+
+    assert len(df) == 1, f"Expected 1 row, got {len(df)}"
+    assert df["x"].iloc[0] == 32
+    assert df["y"].iloc[0] == 32

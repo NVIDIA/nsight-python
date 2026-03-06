@@ -76,7 +76,10 @@ def _sanitize_configs(
         if decorator_configs is None:
             # Check if function takes no arguments
             sig = inspect.signature(func)
-            expected_arg_count = len(sig.parameters)
+            expected_arg_count = sum(
+                1 for p in sig.parameters.values()
+                if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            )
             if expected_arg_count == 0:
                 # For functions with no arguments, create a single empty config
                 # This allows calling the function without requiring explicit configs
@@ -105,7 +108,10 @@ def _sanitize_configs(
 
         # If function takes exactly one argument, allow scalar configs
         sig = inspect.signature(func)
-        expected_arg_count = len(sig.parameters)
+        expected_arg_count = sum(
+            1 for p in sig.parameters.values()
+            if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        )
         if expected_arg_count == 1:
             normalized_configs: list[Sequence[Any]] = []
             for config in configs:
@@ -176,7 +182,11 @@ def run_profile_session(
     config_lengths: list[int] = list()
 
     for c in configs:
-        expected_arg_count = len(inspect.signature(func).parameters)
+        sig = inspect.signature(func)
+        expected_arg_count = sum(
+            1 for p in sig.parameters.values()
+            if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        )
 
         # Handle scalar values
         if expected_arg_count == 1:

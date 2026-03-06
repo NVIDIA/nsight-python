@@ -123,8 +123,11 @@ def extract_df_from_report(
 
     sig = inspect.signature(func)
 
-    # Create a new array for each argument in the signature
-    arg_arrays: dict[str, list[Any]] = {name: [] for name in sig.parameters.keys()}
+    # Create a new array for each regular argument in the signature (exclude *args/**kwargs)
+    arg_arrays: dict[str, list[Any]] = {
+        name: [] for name, p in sig.parameters.items()
+        if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    }
 
     # Extract all profiling data
     if output_progress:
