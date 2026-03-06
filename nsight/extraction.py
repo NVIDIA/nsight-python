@@ -123,8 +123,11 @@ def extract_df_from_report(
 
     sig = inspect.signature(func)
 
-    # Create a new array for each argument in the signature
-    arg_arrays: dict[str, list[Any]] = {name: [] for name in sig.parameters.keys()}
+    # Create a new array for each regular argument in the signature (exclude *args/**kwargs)
+    arg_arrays: dict[str, list[Any]] = {
+        name: [] for name, p in sig.parameters.items()
+        if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    }
 
     # Extract all profiling data
     if output_progress:
@@ -255,9 +258,11 @@ def extract_df_from_report(
             all_metrics.append(tuple(metrics))
             hostnames.append(socket.gethostname())
             # Add a field for every config argument
-            bound_args = sig.bind(*conf)
-            for name, val in bound_args.arguments.items():
-                arg_arrays[name].append(val)
+            config_iter = iter(conf)
+            for name, param in sig.parameters.items():
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                arg_arrays[name].append(next(config_iter))
 
     # Create the DataFrame with the initial columns
     df_data = {

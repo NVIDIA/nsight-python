@@ -58,6 +58,28 @@ Use :func:`nsight.analyze.kernel` to annotate a benchmark function. Nsight Pytho
 
    benchmark(configs=[(1024,), (2048,)])
 
+Config values are mapped to function parameters in declaration order. The following
+parameter kinds are supported:
+
+- **Regular parameters** (``POSITIONAL_OR_KEYWORD``): fully supported.
+- **Keyword-only parameters** (after ``*`` or ``*args``): fully supported — config values
+  are automatically passed as keyword arguments.
+- **Parameters with default values**: configs may omit trailing parameters that have
+  defaults. The defaults are filled in automatically.
+- ``*args`` and ``**kwargs``: tolerated in the signature but ignored — they will always
+  be empty during profiling and will not appear in the results.
+
+.. code-block:: python
+
+   @nsight.analyze.kernel
+   def benchmark(x, y, *, mode="fast"):
+       ...
+
+   # mode has a default, so it can be omitted from configs.
+   # These two calls are equivalent:
+   benchmark(configs=[(1024, 2048)])
+   benchmark(configs=[(1024, 2048, "fast")])
+
 **3. Plot Decorator**  
 Add :func:`nsight.analyze.plot` to automatically generate plots from your profiling runs.
 

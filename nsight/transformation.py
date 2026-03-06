@@ -37,8 +37,11 @@ def aggregate_data(
     if output_progress:
         print("[NSIGHT-PYTHON] Processing profiled data")
 
-    # Get the number of arguments in the signature of func
-    num_args = len(inspect.signature(func).parameters)
+    # Get the number of arguments in the signature of func (exclude *args/**kwargs)
+    num_args = sum(
+        1 for p in inspect.signature(func).parameters.values()
+        if p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    )
 
     # Get the last N fields of the dataframe where N is the number of arguments
     # Note: When num_args=0, we need an empty list (not all columns via [-0:])
@@ -104,8 +107,12 @@ def aggregate_data(
                 )(col),
             )
 
+    # Ensure Value column is numeric (explode can leave it as object dtype
+    # even though the underlying values are always numeric from NCU metrics)
+    df["Value"] = pd.to_numeric(df["Value"])
+
     # Apply aggregation with named aggregation
-    groupby_df = df.groupby(groupby_columns + func_fields)
+    groupby_df = df.groupby(groupby_columns + func_fields, dropna=False)
     agg_df = groupby_df.agg(**named_aggs).reset_index()
 
     # Compute 95% confidence intervals
