@@ -19,6 +19,92 @@ import pandas as pd
 from nsight import annotation, exceptions, thermovision, transformation, utils
 
 
+def _get_regular_params(
+    sig: inspect.Signature,
+) -> list[inspect.Parameter]:
+    """Return the list of regular (non-variadic) parameters from a signature."""
+    return [
+        p
+        for p in sig.parameters.values()
+        if p.kind
+        not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+
+
+def _count_params(
+    sig: inspect.Signature,
+) -> tuple[int, int]:
+    """Count (required, total) regular parameters in a signature.
+
+    Returns:
+        A (required_count, total_count) tuple. required_count excludes
+        parameters with defaults, total_count includes them.
+    """
+    params = _get_regular_params(sig)
+    required = sum(1 for p in params if p.default is inspect.Parameter.empty)
+    return required, len(params)
+
+
+def _pad_config_with_defaults(
+    sig: inspect.Signature, config: Sequence[Any]
+) -> tuple[Any, ...]:
+    """Pad a config tuple with default values for any missing trailing parameters.
+
+    If the config provides fewer values than the function has parameters, the
+    remaining parameters must have defaults, which are appended to the config.
+    This ensures the rest of the pipeline always sees full-length configs.
+
+    Args:
+        sig: The function's inspect.Signature.
+        config: The (possibly short) config tuple.
+
+    Returns:
+        A full-length config tuple with defaults filled in.
+    """
+    params = _get_regular_params(sig)
+    if len(config) == len(params):
+        return tuple(config)
+    padded = list(config)
+    for param in params[len(config) :]:
+        padded.append(param.default)
+    return tuple(padded)
+
+
+def _bind_config_to_signature(
+    sig: inspect.Signature, config: Sequence[Any]
+) -> tuple[list[Any], dict[str, Any]]:
+    """Split a config tuple into positional args and keyword-only kwargs.
+
+    Maps config values to function parameters in declaration order, separating
+    them into positional arguments (for POSITIONAL_OR_KEYWORD params) and
+    keyword arguments (for KEYWORD_ONLY params). VAR_POSITIONAL and VAR_KEYWORD
+    parameters are skipped. Parameters with defaults that are not covered by
+    the config are left for the function to fill in.
+
+    Args:
+        sig: The function's inspect.Signature.
+        config: The config tuple to bind.
+
+    Returns:
+        A (positional_args, keyword_args) tuple ready for func(*pos, **kw).
+    """
+    positional: list[Any] = []
+    keyword: dict[str, Any] = {}
+    config_iter = iter(config)
+    for param in sig.parameters.values():
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
+            continue
+        val = next(config_iter)
+        if param.kind == inspect.Parameter.KEYWORD_ONLY:
+            keyword[param.name] = val
+        else:
+            positional.append(val)
+    return positional, keyword
+
+
 def _sanitize_configs(
     func: Callable[..., Any],
     *args: Any,
@@ -60,6 +146,10 @@ def _sanitize_configs(
         - For functions with no parameters, an empty config [()] is created automatically.
         - The function combines `args` and `kwargs` into a single list if `args` are provided.
         - The function assumes that `kwargs` keys are in the expected order when combining.
+        - Config values are mapped to parameters in declaration order. Both
+          regular and keyword-only parameters are supported. Parameters with
+          defaults may be omitted from configs. ``*args`` and ``**kwargs``
+          are tolerated but ignored.
     """
     if len(args) > 0:
         # We do not expect any configs in this case
@@ -76,8 +166,8 @@ def _sanitize_configs(
         if decorator_configs is None:
             # Check if function takes no arguments
             sig = inspect.signature(func)
-            expected_arg_count = len(sig.parameters)
-            if expected_arg_count == 0:
+            required_count, total_count = _count_params(sig)
+            if required_count == 0:
                 # For functions with no arguments, create a single empty config
                 # This allows calling the function without requiring explicit configs
                 configs = [()]
@@ -105,8 +195,8 @@ def _sanitize_configs(
 
         # If function takes exactly one argument, allow scalar configs
         sig = inspect.signature(func)
-        expected_arg_count = len(sig.parameters)
-        if expected_arg_count == 1:
+        required_count, total_count = _count_params(sig)
+        if total_count == 1:
             normalized_configs: list[Sequence[Any]] = []
             for config in configs:
                 if utils.is_scalar(config):
@@ -122,11 +212,21 @@ def _sanitize_configs(
             )
         first_config_arg_count = config_lengths[0]
 
-        # Validate that the number of args matches the number of function parameters
-        if first_config_arg_count != expected_arg_count:
-            raise exceptions.ProfilerException(
-                f"Configs have {first_config_arg_count} arguments, but function expects {expected_arg_count}"
-            )
+        # Validate that the number of args is between required and total parameters
+        if not (required_count <= first_config_arg_count <= total_count):
+            if required_count == total_count:
+                raise exceptions.ProfilerException(
+                    f"Configs have {first_config_arg_count} arguments, but function expects {total_count}"
+                )
+            else:
+                raise exceptions.ProfilerException(
+                    f"Configs have {first_config_arg_count} arguments, but function expects "
+                    f"between {required_count} and {total_count}"
+                )
+
+        # Pad configs with default values for any missing trailing parameters
+        if first_config_arg_count < total_count:
+            configs = [_pad_config_with_defaults(sig, config) for config in configs]
 
     return configs  # type: ignore[return-value]
 
@@ -176,15 +276,16 @@ def run_profile_session(
     config_lengths: list[int] = list()
 
     for c in configs:
-        expected_arg_count = len(inspect.signature(func).parameters)
+        sig = inspect.signature(func)
+        required_count, total_count = _count_params(sig)
 
         # Handle scalar values
-        if expected_arg_count == 1:
+        if total_count == 1:
             if utils.is_scalar(c):
                 c = (c,)
 
         # Check if func supports the input configs
-        if expected_arg_count != len(c):
+        if not (required_count <= len(c) <= total_count):
             raise exceptions.ProfilerException(
                 f"Function '{func.__name__}' does not support the input configuration"
             )
@@ -211,8 +312,10 @@ def run_profile_session(
             # Clear active annotations before each run
             annotation.clear_active_annotations()
 
-            # Run the function with the config
-            result = func(*c)  # type: ignore[func-returns-value]
+            # Run the function with the config, splitting into positional
+            # and keyword-only args based on the function signature
+            pos_args, kw_args = _bind_config_to_signature(sig, c)
+            result = func(*pos_args, **kw_args)  # type: ignore[func-returns-value]
             if result is not None:
                 show_return_type_warning = True
 
