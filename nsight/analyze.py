@@ -93,6 +93,13 @@ def kernel(
         - ``**kwargs``: Original function keyword arguments
         - Returns ``ProfileResults`` object containing profiling data
 
+    .. note::
+        Configs are passed to the decorated function as positional arguments.
+        Both positional and keyword-only parameters are supported in the function
+        signature. If the function has ``*args`` or ``**kwargs``, they are tolerated
+        but will always be empty during profiling. Parameters with default values
+        may be omitted from configs — missing values will be filled from the defaults.
+
 
     Parameters:
         configs: An iterable of configurations to run the function with. Each configuration can be either:
@@ -104,6 +111,10 @@ def kernel(
             - If the decorated function takes only one argument, it can be a scalar value:
 
                    configs = [1, 2, 3, 4]
+
+            If configs provide fewer values than the function has parameters,
+            the remaining parameters must have default values, which will be used
+            automatically.
 
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
         runs:  Number of times each configuration should be executed.
