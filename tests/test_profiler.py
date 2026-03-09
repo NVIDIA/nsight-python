@@ -1305,15 +1305,19 @@ def test_tuple_typed_function_args_multiple_metrics() -> None:
     assert len(df) == 3, f"Expected 3 rows (one per metric), got {len(df)}"
 
     # Each row should have the correct metric
-    assert set(df["Metric"]) == set(metrics), (
-        f"Expected metrics {metrics}, got {df['Metric'].tolist()}"
-    )
+    assert set(df["Metric"]) == set(
+        metrics
+    ), f"Expected metrics {metrics}, got {df['Metric'].tolist()}"
 
     # Tuple args should be preserved as tuples on every row
     for idx in range(len(df)):
-        assert df["mnkl"].iloc[idx] == (8192, 8192, 8192, 1), (
-            f"Row {idx}: mnkl should be (8192, 8192, 8192, 1), got {df['mnkl'].iloc[idx]}"
-        )
-        assert df["pair"].iloc[idx] == (10, 20), (
-            f"Row {idx}: pair should be (10, 20), got {df['pair'].iloc[idx]}"
-        )
+        assert df["mnkl"].iloc[idx] == (
+            8192,
+            8192,
+            8192,
+            1,
+        ), f"Row {idx}: mnkl should be (8192, 8192, 8192, 1), got {df['mnkl'].iloc[idx]}"
+        assert df["pair"].iloc[idx] == (
+            10,
+            20,
+        ), f"Row {idx}: pair should be (10, 20), got {df['pair'].iloc[idx]}"
