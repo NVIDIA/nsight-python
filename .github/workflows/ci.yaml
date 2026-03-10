@@ -17,9 +17,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - name: "Running Lint" 
+      - name: "Running Lint"
         run: |
-          pip install 'hatch' 'virtualenv<21'
+          pip install hatch
           hatch run lint:check
 
   build-docs:
@@ -29,19 +29,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - name: "Building Docs" 
+      - name: "Building Docs"
         run: |
-          pip install 'hatch' 'virtualenv<21'
+          pip install hatch
           hatch run docs:build
 
   test_linux_amd64_gpu_h100_latest:
     runs-on: linux-amd64-gpu-h100-latest-1
     container:
-      image: nvcr.io/nvidia/pytorch:25.09-py3 
+      image: nvcr.io/nvidia/pytorch:25.09-py3
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
-      - name: "Running Tests" 
+      - name: "Running Tests"
         run: |
-          pip install 'hatch' 'virtualenv<21'
+          pip install hatch
           hatch run test_cu13:run
