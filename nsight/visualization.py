@@ -432,7 +432,10 @@ def visualize(
                     len(normalized_values) == 1
                 ), "Normalized column should have exactly one unique value"
                 normalized_against = normalized_values[0]
-                if normalized_against is not False:
+                if (
+                    normalized_against is not False
+                    and normalized_against is not np.bool(False)
+                ):
                     ylabel_text = f"{ylabel_text} relative to {normalized_against}"
 
             if col_idx == 0:
