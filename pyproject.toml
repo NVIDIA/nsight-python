@@ -20,9 +20,9 @@ dependencies = [
   "pandas",
   "numpy",
   "matplotlib",
-  "nvidia-ml-py",
   "ncu-report",
   "deepdiff",
+  "cuda-core>=0.7.0"
 ]
 
 classifiers = [

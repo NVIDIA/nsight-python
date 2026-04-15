@@ -7,7 +7,8 @@ from typing import Any, Literal
 from nsight.exceptions import CoolingTimeoutError
 
 """
-This module provides GPU thermal monitoring and throttling prevention using NVIDIA's NVML library.
+This module provides GPU thermal monitoring and throttling prevention using NVIDIA's NVML library
+(as exposed through cuda.core.system).
 
 It monitors GPU temperature and T.limit, and delays execution when the GPU
 is too hot to avoid thermal throttling. The module uses an adaptive approach that
@@ -16,20 +17,13 @@ learns optimal cooling thresholds based on workload characteristics.
 
 # Guard NVML imports
 try:
-    from pynvml import (
-        NVML_TEMPERATURE_GPU,
-        NVMLError_NotSupported,
-        nvmlDeviceGetHandleByIndex,
-        nvmlDeviceGetMarginTemperature,
-        nvmlDeviceGetTemperature,
-        nvmlInit,
-    )
+    from cuda.core import system
 
-    PYNVML_AVAILABLE = True
+    CUDA_CORE_AVAILABLE = True
 except ImportError:
-    PYNVML_AVAILABLE = False
+    CUDA_CORE_AVAILABLE = False
     print(
-        "Warning: Cannot import pynvml (provided by nvidia-ml-py). Ensure nsight-python was installed properly with all dependencies."
+        "Warning: Cannot import cuda.core. Ensure nsight-python was installed properly with all dependencies."
     )
 
 # Default thermal threshold constants
@@ -110,12 +104,11 @@ class ThermalController:
         Returns:
             True if temperature retrieval is supported, False otherwise.
         """
-        if not PYNVML_AVAILABLE:
+        if not CUDA_CORE_AVAILABLE:
             return False
 
-        if self.handle is None:
-            nvmlInit()
-            self.handle = nvmlDeviceGetHandleByIndex(0)
+        if self.device is None:
+            self.device = system.Device(index=0)
 
         return self._is_temp_retrieval_supported()
 
@@ -252,8 +245,8 @@ class ThermalController:
             Thermal headroom in degrees Celsius, or None if not supported
         """
         try:
-            return nvmlDeviceGetMarginTemperature(self.handle)  # type: ignore[no-any-return]
-        except NVMLError_NotSupported as e:
+            self.device.temperature.margin
+        except system.NotSupportedError as e:
             print("Error: GPU does not support temperature limit retrieval:", e)
             return None
         except Exception as e:
@@ -265,7 +258,7 @@ class ThermalController:
         Returns:
             GPU temperature in degrees Celsius
         """
-        return nvmlDeviceGetTemperature(self.handle, NVML_TEMPERATURE_GPU)  # type: ignore[no-any-return]
+        return self.device.temperature.sensor(system.TemperatureSensors.TEMPERATURE_GPU)
 
     def _is_temp_retrieval_supported(self) -> bool:
         """Check if GPU supports temperature retrieval.
@@ -274,7 +267,7 @@ class ThermalController:
             True if supported, False otherwise
         """
         try:
-            nvmlDeviceGetMarginTemperature(self.handle)
+            self.device.temperature.margin
             return True
         except Exception:
             print(
