@@ -74,7 +74,7 @@ class ThermalController:
             verbose: Whether to print thermal messages.
                 Default: False
         """
-        self.handle: Any = None
+        self.device: Any = None
         self.thermal_mode = thermal_mode
 
         # Set adaptive_mode based on thermal_mode
