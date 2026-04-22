@@ -245,7 +245,7 @@ class ThermalController:
             Thermal headroom in degrees Celsius, or None if not supported
         """
         try:
-            return self.device.temperature.margin
+            return int(self.device.temperature.margin)
         except system.NotSupportedError as e:
             print("Error: GPU does not support temperature limit retrieval:", e)
             return None
