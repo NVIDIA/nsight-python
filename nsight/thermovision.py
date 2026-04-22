@@ -258,7 +258,9 @@ class ThermalController:
         Returns:
             GPU temperature in degrees Celsius
         """
-        return int(self.device.temperature.sensor(system.TemperatureSensors.TEMPERATURE_GPU))
+        return int(
+            self.device.temperature.sensor(system.TemperatureSensors.TEMPERATURE_GPU)
+        )
 
     def _is_temp_retrieval_supported(self) -> bool:
         """Check if GPU supports temperature retrieval.
