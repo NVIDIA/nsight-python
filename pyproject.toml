@@ -22,7 +22,8 @@ dependencies = [
   "matplotlib",
   "ncu-report",
   "deepdiff",
-  "cuda-core>=0.7.0"
+  "cuda-core>=0.7.0",
+  "cuda-bindings>=12.9.6,!=13.0.*,!=13.1.*",
 ]
 
 classifiers = [
