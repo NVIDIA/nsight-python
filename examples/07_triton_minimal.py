@@ -66,7 +66,7 @@ block_sizes = [256, 512, 1024, 2048]
 configs = list(itertools.product(sizes, block_sizes))
 
 
-def speedup(metric: float, n: int, block_size: int) -> float:
+def speedup(metric: float, n: int, block_size: int) -> tuple[float, str]:
     """
     Compute speedup from normalized timing metric.
 
@@ -79,9 +79,9 @@ def speedup(metric: float, n: int, block_size: int) -> float:
         block_size: Triton block size parameter
 
     Returns:
-        Speedup value (baseline / current)
+        Tuple of (speedup value, unit) - speedup is unitless, represented as "x"
     """
-    return 1.0 / metric
+    return (1.0 / metric, "x")
 
 
 @nsight.analyze.plot(

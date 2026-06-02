@@ -7,7 +7,7 @@ import os
 import tempfile
 import warnings
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, Literal, overload
+from typing import Any, Literal, Mapping, overload
 
 import matplotlib
 import matplotlib.figure
@@ -32,7 +32,12 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metric: Callable[..., float | dict[str, float]] | None = None,
+    derive_metric: (
+        Callable[
+            ..., float | tuple[float, str] | Mapping[str, float | tuple[float, str]]
+        ]
+        | None
+    ) = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -56,7 +61,12 @@ def kernel(
     *,
     configs: Iterable[Any] | None = None,
     runs: int = 1,
-    derive_metric: Callable[..., float | dict[str, float]] | None = None,
+    derive_metric: (
+        Callable[
+            ..., float | tuple[float, str] | Mapping[str, float | tuple[float, str]]
+        ]
+        | None
+    ) = None,
     normalize_against: str | None = None,
     output: Literal["quiet", "progress", "verbose"] = "progress",
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
@@ -126,12 +136,17 @@ def kernel(
             metrics. Return value can be either:
 
             - A single value (float/int): Will be added as a new metric with the function name as the metric name. For lambda functions, the metric name will be ``"<lambda>"``.
-            - A dictionary: Keys will be used as metric names, values as metric values.
+            - A tuple (value, unit): A single metric value with its unit specified. The value will be added with the function name as the metric name, and the unit will be stored in the ``Unit`` column of the dataframe. Example: ``(tflops_value, "TFLOPS")``.
+            - A dictionary: Keys will be used as metric names, values can be either:
+                - Scalar values (float/int): Metric values without units. ``np.nan`` will be added to the ``Unit`` column and a warning will be issued.
+                - Tuples (value, unit): Metric values with units specified. The unit will be stored in the ``Unit`` column of the dataframe. Example: ``{"TFLOPS": (tflops_value, "TFLOPS"), "ArithIntensity": (intensity_value, "FLOP/byte")}``.
 
             The parameter order requirements for the custom function:
 
             - First several arguments: Must exactly match the order of metrics declared in the @kernel decorator. These arguments will receive the actual measured values of those metrics.
             - Remaining arguments: Must exactly match the signature of the decorated function. In other words, the original function's parameters are passed in order.
+
+            **Note on units**: When units are not provided (returning scalar values instead of tuples), ``np.nan`` will be added to the ``Unit`` column in the dataframe and a warning will be issued. To avoid warnings and ensure proper unit tracking, return tuples ``(value, unit)`` for all derived metrics.
 
             See the examples for concrete use cases.
         normalize_against:
@@ -232,6 +247,7 @@ def kernel(
                 - ``Annotation``: Name of the annotated region being profiled
                 - ``Value``: Raw metric values collected by the profiler
                 - ``Metric``: The metrics being collected (e.g., ``gpu__time_duration.sum``) and the metrics being derived
+                - ``Unit``: Unit of measurement for the metric value (e.g., ``ns`` for nanoseconds)
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name
@@ -253,6 +269,7 @@ def kernel(
                 - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
                 - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
                 - ``Metric``: The metrics being collected and the metrics being derived
+                - ``Unit``: Unit of measurement for the metric value (e.g., ``ns`` for nanoseconds)
                 - ``Kernel``: Name of the GPU kernel(s) launched
                 - ``GPU``: GPU device name
                 - ``Host``: Host machine name

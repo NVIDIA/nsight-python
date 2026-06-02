@@ -28,12 +28,12 @@ transpose = [False, True]
 configs = list(itertools.product(sizes, dtypes, transpose))
 
 
-def compute_tflops(time_ns: float, *conf: Any) -> dict[str, float]:
+def compute_tflops(time_ns: float, *conf: Any) -> dict[str, tuple[float, str]]:
     """Compute TFLOPs/s using *conf to extract only what we need."""
     n: int = conf[0]  # Extract size (dtype and transpose not needed)
     flops = 2 * n * n * n
     tflops: float = flops / (time_ns / 1e9) / 1e12
-    return {"TFLOPS": tflops}
+    return {"TFLOPS": (tflops, "TFLOPS")}
 
 
 @nsight.analyze.plot(

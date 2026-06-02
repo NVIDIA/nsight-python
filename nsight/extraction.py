@@ -18,19 +18,27 @@ Functions:
 import functools
 import inspect
 import socket
-from collections.abc import Callable, Sequence
+import warnings
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, List, Tuple, TypeAlias
 
 import ncu_report
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
 
 from nsight import exceptions, utils
 from nsight.utils import is_scalar
 
 DerivedValue: TypeAlias = float | int | None
-DerivedValueDict: TypeAlias = dict[str, DerivedValue]
+DerivedValueWithUnit: TypeAlias = tuple[DerivedValue, str]
+DerivedValueDict: TypeAlias = Mapping[str, DerivedValue | DerivedValueWithUnit]
+
+# Warning message template for missing units in derived metrics
+DERIVED_METRIC_MISSING_UNIT_WARNING = (
+    "Derived metric '{}' does not have a unit specified. "
+    "Return a tuple (value, unit) instead of just the value. "
+    "np.nan will be added to the 'Unit' column in the dataframe."
+)
 
 
 def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUActionData:
@@ -56,6 +64,7 @@ def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUAct
     all_values = (
         None if failure else np.array([action[metric].value() for metric in metrics])
     )
+    all_units = [action[metric].unit() for metric in metrics]
 
     return utils.NCUActionData(
         name=action.name(),
@@ -63,6 +72,7 @@ def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUAct
         compute_clock=action["device__attribute_clock_rate"].value(),
         memory_clock=action["device__attribute_memory_clock_rate"].value(),
         gpu=action["device__attribute_display_name"].value(),
+        units=all_units,
     )
 
 
@@ -111,8 +121,9 @@ def extract_df_from_report(
     annotations: List[str] = []
     all_values: List[Tuple[Any, ...] | None] = []
     all_transformed_values: List[
-        List[DerivedValue] | DerivedValue | NDArray[Any] | None
+        List[DerivedValue] | DerivedValue | np.typing.NDArray[Any] | None
     ] = []
+    all_transformed_values_units: list[List[str | float] | str | float] = []
     kernel_names: List[str] = []
     gpus: List[str] = []
     compute_clocks: List[int] = []
@@ -120,6 +131,7 @@ def extract_df_from_report(
     all_metrics: List[Tuple[str, ...]] = []
     all_transformed_metrics: List[List[str] | str | bool] = []
     hostnames: List[str] = []
+    units: List[List[str]] = []
 
     sig = inspect.signature(func)
 
@@ -213,6 +225,7 @@ def extract_df_from_report(
             memory_clocks.append(data.memory_clock)
             gpus.append(data.gpu)
             kernel_names.append(data.name)
+            units.append(data.units)
 
             # evaluate the measured metrics
             values = data.values
@@ -237,22 +250,53 @@ def extract_df_from_report(
                                 f"but has {actual_params} parameters"
                             )
 
-                derived_metric: DerivedValueDict | DerivedValue = (
-                    None if values is None else derive_metric(*values, *conf)
-                )
-                if isinstance(derived_metric, dict):
+                # Store function name for warning messages
+                derive_metric_func_name = derive_metric.__name__
+                derived_metric: (
+                    DerivedValueWithUnit | DerivedValueDict | DerivedValue
+                ) = (None if values is None else derive_metric(*values, *conf))
+                if isinstance(derived_metric, Mapping):
                     # If the derived metric is a dict, then we have multiple metrics
                     # and use the keys of the dict as metric names.
-                    metric_names, metric_values = zip(
-                        *[(k, v) for k, v in derived_metric.items()]
-                    )
+
+                    metric_names: list[str] = list()
+                    metric_values: list[DerivedValue] = list()
+                    unit_names: list[str | float] = list()
+
+                    for metric_name, metric_value in derived_metric.items():
+                        metric_names.append(metric_name)
+
+                        if isinstance(metric_value, tuple) and len(metric_value) >= 2:
+                            metric_values.append(metric_value[0])
+                            unit_names.append(metric_value[1])
+                        else:
+                            # It is a scalar value
+                            metric_values.append(metric_value)
+                            unit_names.append(np.nan)
+                            warnings.warn(
+                                DERIVED_METRIC_MISSING_UNIT_WARNING.format(metric_name)
+                            )
+
                     all_transformed_values.append(list(metric_values))
                     all_transformed_metrics.append(list(metric_names))
+                    all_transformed_values_units.append(list(unit_names))
+
                 else:
-                    # If the derived metric is a scalar, then we have a single metric
-                    # and use the name of the function as the metric name.
-                    all_transformed_values.append(derived_metric)
-                    all_transformed_metrics.append(derive_metric.__name__)
+                    if isinstance(derived_metric, tuple):
+                        derived_metric_value = derived_metric[0]
+                        derived_metric_unit = derived_metric[1]
+                        all_transformed_values.append(derived_metric_value)
+                        all_transformed_values_units.append(derived_metric_unit)
+
+                    else:
+                        warnings.warn(
+                            DERIVED_METRIC_MISSING_UNIT_WARNING.format(
+                                derive_metric_func_name
+                            )
+                        )
+                        all_transformed_values.append(derived_metric)
+                        all_transformed_values_units.append(np.nan)
+                    all_transformed_metrics.append(derive_metric_func_name)
 
             # gather remaining required data
             annotations.append(annotation)
@@ -279,15 +323,20 @@ def extract_df_from_report(
         "Host": hostnames,
         "ComputeClock": compute_clocks,
         "MemoryClock": memory_clocks,
+        "Unit": units,
     }
 
     # Add each array in arg_arrays to the DataFrame
     for arg_name, arg_values in arg_arrays.items():
         df_data[arg_name] = arg_values
 
-    # Explode only Value and Metric columns (which contain tuples of per-metric data).
+    # Explode only Value, Metric and Unit columns (which contain tuples of per-metric data).
     # Other columns (including function args) may also contain tuples that should NOT be exploded.
-    df = pd.DataFrame(df_data).explode(["Value", "Metric"]).reset_index(drop=True)
+    df = (
+        pd.DataFrame(df_data)
+        .explode(["Value", "Metric", "Unit"])
+        .reset_index(drop=True)
+    )
 
     if derive_metric is not None:
         transformed_df_data = {
@@ -299,6 +348,7 @@ def extract_df_from_report(
             "Host": hostnames,
             "ComputeClock": compute_clocks,
             "MemoryClock": memory_clocks,
+            "Unit": all_transformed_values_units,
         }
 
         for arg_name, arg_values in arg_arrays.items():
@@ -306,7 +356,7 @@ def extract_df_from_report(
 
         transformed_df = (
             pd.DataFrame(transformed_df_data)
-            .explode(["Value", "Metric"])
+            .explode(["Value", "Metric", "Unit"])
             .reset_index(drop=True)
         )
 

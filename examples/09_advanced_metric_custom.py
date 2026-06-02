@@ -20,7 +20,7 @@ sizes = [(2**i,) for i in range(10, 12)]
 
 def compute_insts_statistics(
     ld_insts: int, st_insts: int, launch_sm_count: int, n: int
-) -> dict[str, float]:
+) -> dict[str, tuple[float, str]]:
     """
     Compute shared memory instruction statistics per SM.
 
@@ -45,11 +45,11 @@ def compute_insts_statistics(
         n: Matrix size (n x n) - parameter from the decorated benchmark function
 
     Returns:
-        Dictionary containing four derived metrics:
-        - "ld_insts_per_sm": Average load instructions per SM
-        - "st_insts_per_sm": Average store instructions per SM
-        - "insts_total": Total shared memory instructions (load + store)
-        - "insts_per_sm": Average total instructions per SM
+        Dictionary containing four derived metrics, each as a tuple (value, unit):
+        - "ld_insts_per_sm": (value, "inst/SM")
+        - "st_insts_per_sm": (value, "inst/SM")
+        - "insts_total": (value, "inst")
+        - "insts_per_sm": (value, "inst/SM")
     """
     ld_insts_per_sm = ld_insts / launch_sm_count
     st_insts_per_sm = st_insts / launch_sm_count
@@ -57,10 +57,10 @@ def compute_insts_statistics(
     insts_per_sm = (ld_insts + st_insts) / launch_sm_count
 
     return {
-        "ld_insts_per_sm": ld_insts_per_sm,
-        "st_insts_per_sm": st_insts_per_sm,
-        "insts_total": insts_total,
-        "insts_per_sm": insts_per_sm,
+        "ld_insts_per_sm": (ld_insts_per_sm, "inst/SM"),
+        "st_insts_per_sm": (st_insts_per_sm, "inst/SM"),
+        "insts_total": (insts_total, "inst"),
+        "insts_per_sm": (insts_per_sm, "inst/SM"),
     }
 
 

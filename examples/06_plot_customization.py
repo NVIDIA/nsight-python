@@ -22,9 +22,10 @@ import nsight
 sizes = [(2**i,) for i in range(11, 14)]
 
 
-def compute_tflops(time_ns: float, n: int) -> dict[str, float]:
+def compute_tflops(time_ns: float, n: int) -> dict[str, tuple[float, str]]:
     flops = 2 * n * n * n
-    return {"TFLOPS": flops / (time_ns / 1e9) / 1e12}
+    tflops = flops / (time_ns / 1e9) / 1e12
+    return {"TFLOPS": (tflops, "TFLOPS")}
 
 
 # Example 1: Bar chart
