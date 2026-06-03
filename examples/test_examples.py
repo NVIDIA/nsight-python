@@ -65,3 +65,8 @@ def test_10_combine_kernel_metrics() -> None:
 def test_11_output_csv() -> None:
     output_csv = importlib.import_module("examples.11_output_csv")
     output_csv.main()
+
+
+def test_12_cutile() -> None:
+    cutile = importlib.import_module("examples.12_cutile")
+    cutile.main()
