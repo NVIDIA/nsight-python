@@ -36,7 +36,7 @@ def main() -> None:
     result = benchmark_matmul(1024)
     print(
         result.to_dataframe()[
-            ["Annotation", "n", "Metric", "AvgValue", "NumRuns", "GPU"]
+            ["Annotation", "n", "Metric", "Unit", "AvgValue", "NumRuns", "GPU"]
         ]
     )
     print("Benchmark complete!")

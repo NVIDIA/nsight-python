@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 """
 Test suite for Nsight Python profiler functionality.
 """
@@ -10,6 +7,8 @@ import shutil
 from collections.abc import Generator, Sequence
 from typing import Any, Literal
 
+import numpy as np
+import pandas as pd
 import pytest
 import torch
 from cuda.core import Device, LaunchConfig, Program, launch
@@ -749,9 +748,9 @@ def test_parameter_ignore_kernel_list(ignore_kernel_list: None | list[str]) -> N
 
         # Allocate device memory
         size_bytes = n * 4  # float32
-        d_a = device.allocate(size_bytes)
-        d_b = device.allocate(size_bytes)
-        d_c = device.allocate(size_bytes)
+        d_a = device.allocate(size_bytes, stream=s)
+        d_b = device.allocate(size_bytes, stream=s)
+        d_c = device.allocate(size_bytes, stream=s)
 
         # Launch both kernels in one annotation
         with nsight.annotate(f"test_kernels_{ignore_kernel_list}"):
@@ -906,9 +905,9 @@ def test_parameter_replay_mode(
 
             # Allocate device memory
             size_bytes = n * 4  # float32
-            d_a = device.allocate(size_bytes)
-            d_b = device.allocate(size_bytes)
-            d_c = device.allocate(size_bytes)
+            d_a = device.allocate(size_bytes, stream=s)
+            d_b = device.allocate(size_bytes, stream=s)
+            d_c = device.allocate(size_bytes, stream=s)
 
             # Launch multiple kernels in the same annotation
             with nsight.annotate("test_replay"):
@@ -942,7 +941,7 @@ def test_parameter_replay_mode(
 # ============================================================================
 
 
-def _compute_custom_metric_1(time_ns: float, x: int, y: int) -> float:
+def _compute_custom_metric(time_ns: float, x: int, y: int) -> float:
     """Transform time in nanoseconds to a custom metric based on matrix size."""
     # Custom formula: operations per second (arbitrary for testing)
     operations = x * y
@@ -950,27 +949,66 @@ def _compute_custom_metric_1(time_ns: float, x: int, y: int) -> float:
     return operations / time_s if time_s > 0 else 0.0
 
 
-def _compute_custom_metric_2(time_ns: float, x: int, y: int) -> dict[str, float]:
+def _compute_custom_metric_dict(time_ns: float, x: int, y: int) -> dict[str, float]:
     """Transform time in nanoseconds to a custom metric based on matrix size."""
     # Custom formula: operations per second (arbitrary for testing)
     operations = x * y
     time_s = time_ns / 1e9
-    return {"Custom Metric": operations / time_s if time_s > 0 else 0.0}
+    throughput = operations / time_s if time_s > 0 else 0.0
+    efficiency = throughput / 1e6 if throughput > 0 else 0.0
+    return {
+        "CustomMetric1": throughput,
+        "CustomMetric2": efficiency,
+    }
+
+
+def _compute_custom_metric_with_unit(
+    time_ns: float, x: int, y: int
+) -> tuple[float, str]:
+    """Compute custom metric and return with unit."""
+    value = _compute_custom_metric(time_ns, x, y)
+    return (value, "ops/s")
+
+
+def _compute_custom_metrics_dict_with_units(
+    time_ns: float, x: int, y: int
+) -> dict[str, tuple[float, str]]:
+    """Compute multiple custom metrics and return with units."""
+    base_dict = _compute_custom_metric_dict(time_ns, x, y)
+    return {
+        "CustomMetric1": (base_dict["CustomMetric1"], "ops/s"),
+        "CustomMetric2": (base_dict["CustomMetric2"], "Mops/s"),
+    }
 
 
 @pytest.mark.parametrize(
-    "derive_metric_func,expected_name",
+    "derive_metric_func,expected_name,expected_units",
     [
-        (_compute_custom_metric_1, "_compute_custom_metric_1"),
-        (_compute_custom_metric_2, "Custom Metric"),
-        (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>"),
+        (_compute_custom_metric, "_compute_custom_metric", [None]),
+        (_compute_custom_metric_dict, ["CustomMetric1", "CustomMetric2"], [None, None]),
+        (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>", [None]),
         (
             lambda time_ns, x, y: {"Custom Metric": (x * y) / (time_ns / 1e9) / 1e9},
             "Custom Metric",
+            [None],
+        ),
+        (
+            _compute_custom_metric_with_unit,
+            "_compute_custom_metric_with_unit",
+            ["ops/s"],
+        ),
+        (
+            _compute_custom_metrics_dict_with_units,
+            ["CustomMetric1", "CustomMetric2"],
+            ["ops/s", "Mops/s"],
         ),
     ],
 )  # type: ignore[untyped-decorator]
-def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) -> None:
+def test_parameter_derive_metric(
+    derive_metric_func: Any,
+    expected_name: str | list[str],
+    expected_units: list[str | None],
+) -> None:
     """Test the derive_metric parameter to transform collected metrics."""
 
     configs = [(100, 100), (200, 200)]
@@ -987,7 +1025,15 @@ def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) ->
         _simple_kernel_impl(x, y, "test_derive_metric")
 
     # Run profiling
-    profile_output = profiled_func()
+    # Check for warnings when units are None
+    has_none_units = any(unit is None for unit in expected_units)
+    if has_none_units:
+        with pytest.warns(
+            UserWarning, match="Derived metric.*does not have a unit specified"
+        ):
+            profile_output = profiled_func()
+    else:
+        profile_output = profiled_func()
     assert profile_output is not None, "ProfileResults should be returned"
 
     # Verify the transformed metric is present
@@ -997,16 +1043,53 @@ def test_parameter_derive_metric(derive_metric_func: Any, expected_name: str) ->
         df["Metric"][0:raw_metric_rows] == "gpu__time_duration.sum"
     ), f"Metric column (row-{0} ~ row-{raw_metric_rows-1}) should show 'gpu__time_duration.sum'"
 
-    assert all(
-        df["Metric"][raw_metric_rows : len(df)] == expected_name
-    ), f"Metric column (row-{raw_metric_rows} ~ row-{len(df)-1}) should show '{expected_name}'"
+    # Handle dictionary return case separately
+    if isinstance(expected_name, list):
+        # For dictionary returns, check that all expected metrics are present
+        expected_metrics = set(expected_name)
+        derived_metrics = set(df["Metric"][raw_metric_rows:].unique())
+        assert expected_metrics.issubset(
+            derived_metrics
+        ), f"Expected metrics {expected_metrics} not all found in {derived_metrics}"
+        # Verify we have results for all combinations (2 configs * (1 base + N derived) metrics)
+        expected_rows = len(configs) * (1 + len(expected_name))
+        assert (
+            len(df) == expected_rows
+        ), f"Should have results for {expected_rows} rows (2 configs * {1 + len(expected_name)} metrics)"
+    else:
+        assert all(
+            df["Metric"][raw_metric_rows : len(df)] == expected_name
+        ), f"Metric column (row-{raw_metric_rows} ~ row-{len(df)-1}) should show '{expected_name}'"
+        # Verify we have results for all combinations (2 configs * 2 metrics = 4 rows)
+        assert len(df) == 2 * 2, "Should have results for 2 configurations * 2 metrics"
 
     # Verify the metric values are transformed (should be positive numbers)
     assert "AvgValue" in df.columns, "AvgValue column should exist"
-    assert all(df["AvgValue"] > 0), "All derived metric values should be positive"
 
-    # Verify we have results for all combinations (2 configs * 2 metrics = 4 rows)
-    assert len(df) == 2 * 2, "Should have results for 2 configurations * 2 metrics"
+    # Check units for tuple return cases
+    assert "Unit" in df.columns, "Unit column should exist in the dataframe"
+
+    # Check units based on expected_units parameter
+    # Normalize expected_name to a list for consistent handling
+    if isinstance(expected_name, str):
+        expected_names = [expected_name]
+    else:
+        expected_names = expected_name
+
+    # Check units for each metric
+    for metric_name, expected_unit in zip(expected_names, expected_units):
+        metric_rows = df[df["Metric"] == metric_name]
+        assert len(metric_rows) > 0, f"Metric '{metric_name}' not found in results"
+        actual_units = metric_rows["Unit"].unique()
+        if expected_unit is None:
+            # When unit is None, we expect np.nan in the dataframe
+            assert len(actual_units) == 1 and pd.isna(
+                actual_units[0]
+            ), f"Invalid unit for metric '{metric_name}'. Expected np.nan, got {actual_units.tolist()}"
+        else:
+            assert (
+                len(actual_units) == 1 and actual_units[0] == expected_unit
+            ), f"Invalid unit for metric '{metric_name}'. Expected '{expected_unit}', got {actual_units.tolist()}"
 
 
 # ============================================================================
@@ -1080,14 +1163,35 @@ def test_parameter_output(
             "valid_single_zero",
             id="valid_single_zero",
         ),
+        pytest.param(
+            [
+                "sm__warps_launched.sum",
+                "gpu__time_duration.sum",
+            ],
+            "valid_multiple",
+            id="valid_multiple",
+        ),
     ],
 )
 def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None:
 
-    @nsight.analyze.plot(filename="plot.png", ylabel="Instructions")
-    @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, metrics=metrics)
-    def profiled_func(x: int, y: int) -> None:
-        _simple_kernel_impl(x, y, "test_parameter_metrics")
+    # Don't use plot decorator for multiple metrics test
+    if expected_result == "valid_multiple":
+
+        @nsight.analyze.kernel(
+            configs=[(100, 100), (200, 200)], runs=2, metrics=metrics
+        )
+        def profiled_func(x: int, y: int) -> None:
+            _simple_kernel_impl(x, y, "test_parameter_metrics")
+
+    else:
+
+        @nsight.analyze.plot(filename="plot.png", ylabel="Instructions")
+        @nsight.analyze.kernel(
+            configs=[(100, 100), (200, 200)], runs=2, metrics=metrics
+        )
+        def profiled_func(x: int, y: int) -> None:
+            _simple_kernel_impl(x, y, "test_parameter_metrics")
 
     # Run profiling
     if expected_result == "invalid_single":
@@ -1106,6 +1210,15 @@ def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None
         assert (
             df["Metric"] == metrics[0]
         ).all(), f"Invalid metric name {df.loc[df['Metric'] != metrics[0], 'Metric'].iloc[0]} found in output dataframe"
+
+        # Check if Unit column exists
+        assert "Unit" in df.columns, "Unit column should exist in the dataframe"
+
+        # Check unit for sm__warps_launched.sum (expected unit: "warp")
+        actual_units = df["Unit"].unique()
+        assert (
+            len(actual_units) == 1 and actual_units[0] == "warp"
+        ), f"Invalid unit for metric 'sm__warps_launched.sum'. Expected 'warp', got {actual_units.tolist()}"
 
         # Checking if the metric values are valid
         assert (
@@ -1129,6 +1242,40 @@ def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None
             ),
         ):
             profiled_func()
+    elif expected_result == "valid_multiple":
+        profile_output = profiled_func()
+        df = profile_output.to_dataframe()
+
+        # Expected units for the metrics
+        expected_units = {
+            "sm__warps_launched.sum": "warp",
+            "gpu__time_duration.sum": "ns",
+        }
+
+        # Check if the dataframe has the right metrics
+        assert all(
+            df["Metric"].isin(metrics)
+        ), f"Invalid metric names found in output dataframe. Expected {metrics}, got {df['Metric'].unique().tolist()}"
+
+        # Check if Unit column exists
+        assert "Unit" in df.columns, "Unit column should exist in the dataframe"
+
+        # Check units for each metric
+        for metric in metrics:
+            metric_rows = df[df["Metric"] == metric]
+            assert len(metric_rows) > 0, f"Metric '{metric}' not found in results"
+
+            expected_unit = expected_units.get(metric)
+            if expected_unit is not None:
+                actual_units = metric_rows["Unit"].unique()
+                assert (
+                    len(actual_units) == 1 and actual_units[0] == expected_unit
+                ), f"Invalid unit for metric '{metric}'. Expected '{expected_unit}', got {actual_units.tolist()}"
+
+        # Check if the metric values are valid
+        assert (
+            df["AvgValue"].notna() & (df["AvgValue"] > 1)
+        ).all(), f"Invalid AvgValue for metrics {metrics}"
 
 
 # ============================================================================

@@ -138,6 +138,7 @@ class NCUActionData:
     compute_clock: int
     memory_clock: int
     gpu: str
+    units: list[str]
 
     @staticmethod
     def combine(value_reduce_op: Any) -> Any:
@@ -150,12 +151,14 @@ class NCUActionData:
             assert lhs.compute_clock == rhs.compute_clock
             assert lhs.memory_clock == rhs.memory_clock
             assert lhs.gpu == rhs.gpu
+            assert lhs.units == rhs.units
             return NCUActionData(
                 name=f"{lhs.name}|{rhs.name}",
                 values=value_reduce_op(lhs.values, rhs.values),
                 compute_clock=lhs.compute_clock,
                 memory_clock=lhs.memory_clock,
                 gpu=lhs.gpu,
+                units=lhs.units,
             )
 
         return _combine
