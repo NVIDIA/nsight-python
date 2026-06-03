@@ -70,4 +70,3 @@ def test_11_output_csv() -> None:
 def test_12_cutile() -> None:
     cutile = importlib.import_module("examples.12_cutile")
     cutile.main()
-
