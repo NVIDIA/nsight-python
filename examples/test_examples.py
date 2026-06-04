@@ -2,8 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib
+from typing import Any
 
 import pytest
+import torch
+
+
+def get_cuda_dev_cc_major(device_id: int) -> Any:
+    props = torch.cuda.get_device_properties(device_id)
+    return props.major
 
 
 def test_00_minimal() -> None:
@@ -67,6 +74,11 @@ def test_11_output_csv() -> None:
     output_csv.main()
 
 
+# skip cuTile test on CC 9.x as Cuda Toolkit 13.2 used for testing does not support cuda-tile on CC 9.x (Hopper)
+@pytest.mark.skipif(
+    get_cuda_dev_cc_major(0) == 9,
+    reason="cuda-tile not supported on CC 9.x in CUDA Toolkit 13.2",
+)  # type: ignore[untyped-decorator]
 def test_12_cutile() -> None:
     cutile = importlib.import_module("examples.12_cutile")
     cutile.main()
