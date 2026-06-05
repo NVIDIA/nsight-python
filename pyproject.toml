@@ -42,6 +42,10 @@ classifiers = [
 cu12 = ["cuda-core[cu12]"]
 cu13 = ["cuda-core[cu13]"]
 
+test = [
+  "cuda-tile>=1.4.0",
+]
+
 [project.urls]
 Repository = "https://github.com/NVIDIA/nsight-python"
 License = "https://docs.nvidia.com/nsight-python/license.html"
