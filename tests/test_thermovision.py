@@ -5,10 +5,12 @@ import os
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 import torch
 
 import nsight
 from nsight import collection
+from nsight.thermovision import CUDA_CORE_AVAILABLE
 
 # ============================================================================
 # Thermovision integration tests
@@ -258,3 +260,23 @@ def test_fixed_mode_no_adaptation() -> None:
     assert (
         controller.thermal_cont == 30
     ), f"Fixed mode should not adapt, but got {controller.thermal_cont}"
+
+
+@pytest.mark.skipif(  # type: ignore[untyped-decorator]
+    not CUDA_CORE_AVAILABLE, reason="cuda.core required for real device access"
+)
+def test_get_gpu_temp_real_device() -> None:
+    """Test that _get_gpu_temp reads an actual temperature from the GPU device."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="off", verbose=False)
+    supported = controller.init()
+
+    if not supported:
+        pytest.skip("GPU does not support temperature retrieval on this machine")
+
+    temp = controller._get_gpu_temp()
+
+    assert isinstance(temp, int), f"Expected int temperature, got {type(temp)}"
+    assert temp >= 0, f"GPU temperature {temp}°C is below 0"
+    assert temp <= 120, f"GPU temperature {temp}°C is above 120"
