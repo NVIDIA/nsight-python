@@ -49,14 +49,17 @@ def aggregate_data(
     # Note: When num_args=0, we need an empty list (not all columns via [-0:])
     func_fields = df.columns[-num_args:].tolist() if num_args > 0 else []
 
-    # Function to convert non-sortable columns to tuples or strings
+    # Stringify columns that can't be groupby keys. Keys must be hashable
+    # (pandas factorizes them) and sortable (groupby sorts them); sorted() alone
+    # misses unhashable values in <=1-row columns since no comparison runs, so
+    # probe hashability with set() too.
     def convert_non_sortable_columns(dframe: pd.DataFrame) -> pd.DataFrame:
         for col in dframe.columns:
+            non_null = dframe[col].dropna()
             try:
-                # Try sorting the column to check if it's sortable.
-                sorted(dframe[col].dropna())
+                set(non_null)
+                sorted(non_null)
             except (TypeError, ValueError):
-                # If sorting fails, convert the column to string
                 dframe[col] = dframe[col].astype(str)
         return dframe
 
