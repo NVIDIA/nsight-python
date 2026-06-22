@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for nsight.transformation.aggregate_data (no GPU required)."""
@@ -30,13 +30,17 @@ def _raw_df(config_values: list[Any], *, param_name: str = "config") -> pd.DataF
 
 def test_dict_config_single_row_does_not_crash() -> None:
     # Regression: a single dict-config row used to crash groupby().agg() with
-    # "unhashable type: 'dict'" because the dict was never stringified.
+    # "unhashable type: 'dict'". The output must keep the dict as a real dict.
     dims = {"M": 512, "K": 512, "N": 512}
     result = transformation.aggregate_data(_raw_df([dims]), _one_arg, None, False)
     assert len(result) == 1
-    assert result["config"].iloc[0] == str(dims)
+    assert result["config"].iloc[0] == dims
+    assert isinstance(result["config"].iloc[0], dict)
+    assert result["config"].iloc[0]["M"] == 512  # usable as a dict, no parsing
     assert result["NumRuns"].iloc[0] == 1
     assert result["AvgValue"].iloc[0] == 1.0
+    # The temporary sort key must not leak into the output.
+    assert not any("sortkey" in c for c in result.columns)
 
 
 def test_dict_config_independent_of_run_count() -> None:
@@ -48,22 +52,27 @@ def test_dict_config_independent_of_run_count() -> None:
         )
         assert len(result) == 1
         assert result["NumRuns"].iloc[0] == runs
+        assert result["config"].iloc[0] == dims
 
 
 def test_distinct_dict_configs_stay_distinct() -> None:
-    # Stringification is per-row, so different dicts remain different groups.
-    d1, d2 = {"M": 512}, {"M": 1024}
+    # Different dicts form different groups, each preserved as a real dict.
+    d1 = {"M": 512, "K": 512, "N": 512}
+    d2 = {"M": 1024, "K": 1024, "N": 1024}
     result = transformation.aggregate_data(_raw_df([d1, d2]), _one_arg, None, False)
     assert len(result) == 2
-    assert set(result["config"]) == {str(d1), str(d2)}
+    configs = list(result["config"])
+    assert all(isinstance(c, dict) for c in configs)
+    assert d1 in configs and d2 in configs
 
 
 def test_list_config_single_row_does_not_crash() -> None:
-    # Lists are unhashable too.
+    # Lists are unhashable too, and must also be preserved as lists.
     shape = [512, 512]
     result = transformation.aggregate_data(_raw_df([shape]), _one_arg, None, False)
     assert len(result) == 1
-    assert result["config"].iloc[0] == str(shape)
+    assert result["config"].iloc[0] == shape
+    assert isinstance(result["config"].iloc[0], list)
 
 
 def test_numeric_config_keeps_native_dtype() -> None:
