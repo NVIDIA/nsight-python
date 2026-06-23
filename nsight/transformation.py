@@ -49,20 +49,6 @@ def aggregate_data(
     # Note: When num_args=0, we need an empty list (not all columns via [-0:])
     func_fields = df.columns[-num_args:].tolist() if num_args > 0 else []
 
-    # Function to convert non-sortable columns to tuples or strings
-    def convert_non_sortable_columns(dframe: pd.DataFrame) -> pd.DataFrame:
-        for col in dframe.columns:
-            try:
-                # Try sorting the column to check if it's sortable.
-                sorted(dframe[col].dropna())
-            except (TypeError, ValueError):
-                # If sorting fails, convert the column to string
-                dframe[col] = dframe[col].astype(str)
-        return dframe
-
-    # Convert non-sortable columns before grouping
-    df = convert_non_sortable_columns(df)
-
     # Preserve original order by adding an index column
     df = df.reset_index(drop=True)
     df["_original_order"] = df.index
@@ -109,12 +95,41 @@ def aggregate_data(
                 )(col),
             )
 
+    # Group keys must be hashable (pandas factorizes them) and sortable
+    # (groupby sorts them). Keys that are neither — e.g. dict- or list-valued
+    # config parameters — are grouped on a temporary stringified key, and the
+    # original objects are recovered with a "first" aggregation so the output
+    # preserves them (a dict stays a dict instead of becoming its repr).
+    def _is_groupable(series: pd.Series) -> bool:
+        non_null = series.dropna()
+        try:
+            set(non_null)
+            sorted(non_null)
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    sortkey_cols: list[str] = []
+    group_keys: list[str] = []
+    func_field_keys: list[str] = []
+    for col in groupby_columns + func_fields:
+        if _is_groupable(df[col]):
+            key = col
+        else:
+            key = f"{col}__sortkey__"
+            df[key] = df[col].astype(str)
+            sortkey_cols.append(key)
+            named_aggs[col] = (col, "first")  # preserve the original objects
+        group_keys.append(key)
+        if col in func_fields:
+            func_field_keys.append(key)
+
     # Ensure Value column is numeric (explode can leave it as object dtype
     # even though the underlying values are always numeric from NCU metrics)
     df["Value"] = pd.to_numeric(df["Value"])
 
     # Apply aggregation with named aggregation
-    groupby_df = df.groupby(groupby_columns + func_fields, dropna=False)
+    groupby_df = df.groupby(group_keys, dropna=False)
     agg_df = groupby_df.agg(**named_aggs).reset_index()
 
     # Compute 95% confidence intervals
@@ -149,8 +164,9 @@ def aggregate_data(
             normalize_against in agg_df["Annotation"].values
         ), f"Annotation '{normalize_against}' not found in data."
 
-        # Columns of normalization dataframe to merge on
-        merge_on = [*func_fields, "Metric"]
+        # Columns of normalization dataframe to merge on (use the stringified
+        # keys for any unhashable config columns so the merge can hash them)
+        merge_on = [*func_field_keys, "Metric"]
 
         # Create a DataFrame to hold the normalization values
         normalization_df = agg_df[agg_df["Annotation"] == normalize_against][
@@ -177,5 +193,9 @@ def aggregate_data(
             else np.nan
         )
     )
+
+    # Drop the temporary stringified group keys; the original columns remain.
+    if sortkey_cols:
+        agg_df = agg_df.drop(columns=sortkey_cols)
 
     return agg_df
