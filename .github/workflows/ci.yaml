@@ -38,7 +38,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        - runner: [linux-amd64-gpu-h100-latest-1, nv-gpu-arm64-l4-1gpu]
+        runner: [linux-amd64-gpu-h100-latest-1, nv-gpu-arm64-l4-1gpu]
     container:
       image: nvcr.io/nvidia/pytorch:26.05-py3
       options: "--cap-add=SYS_ADMIN --gpus all"
