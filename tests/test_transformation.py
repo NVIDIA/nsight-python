@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from nsight import transformation
+from nsight.utils import VerbosityLevel
 
 
 def _one_arg(config: Any) -> None:
@@ -32,7 +33,9 @@ def test_dict_config_single_row_does_not_crash() -> None:
     # Regression: a single dict-config row used to crash groupby().agg() with
     # "unhashable type: 'dict'". The output must keep the dict as a real dict.
     dims = {"M": 512, "K": 512, "N": 512}
-    result = transformation.aggregate_data(_raw_df([dims]), _one_arg, None, False)
+    result = transformation.aggregate_data(
+        _raw_df([dims]), _one_arg, None, VerbosityLevel.SILENT
+    )
     assert len(result) == 1
     assert result["config"].iloc[0] == dims
     assert isinstance(result["config"].iloc[0], dict)
@@ -48,7 +51,7 @@ def test_dict_config_independent_of_run_count() -> None:
     dims = {"M": 256, "K": 256, "N": 256}
     for runs in (1, 2, 5):
         result = transformation.aggregate_data(
-            _raw_df([dims] * runs), _one_arg, None, False
+            _raw_df([dims] * runs), _one_arg, None, VerbosityLevel.SILENT
         )
         assert len(result) == 1
         assert result["NumRuns"].iloc[0] == runs
@@ -59,7 +62,9 @@ def test_distinct_dict_configs_stay_distinct() -> None:
     # Different dicts form different groups, each preserved as a real dict.
     d1 = {"M": 512, "K": 512, "N": 512}
     d2 = {"M": 1024, "K": 1024, "N": 1024}
-    result = transformation.aggregate_data(_raw_df([d1, d2]), _one_arg, None, False)
+    result = transformation.aggregate_data(
+        _raw_df([d1, d2]), _one_arg, None, VerbosityLevel.SILENT
+    )
     assert len(result) == 2
     configs = list(result["config"])
     assert all(isinstance(c, dict) for c in configs)
@@ -69,7 +74,9 @@ def test_distinct_dict_configs_stay_distinct() -> None:
 def test_list_config_single_row_does_not_crash() -> None:
     # Lists are unhashable too, and must also be preserved as lists.
     shape = [512, 512]
-    result = transformation.aggregate_data(_raw_df([shape]), _one_arg, None, False)
+    result = transformation.aggregate_data(
+        _raw_df([shape]), _one_arg, None, VerbosityLevel.SILENT
+    )
     assert len(result) == 1
     assert result["config"].iloc[0] == shape
     assert isinstance(result["config"].iloc[0], list)
@@ -77,6 +84,8 @@ def test_list_config_single_row_does_not_crash() -> None:
 
 def test_numeric_config_keeps_native_dtype() -> None:
     # Sortable, hashable configs must not be needlessly coerced to strings.
-    result = transformation.aggregate_data(_raw_df([128]), _one_arg, None, False)
+    result = transformation.aggregate_data(
+        _raw_df([128]), _one_arg, None, VerbosityLevel.SILENT
+    )
     assert result["config"].iloc[0] == 128
     assert pd.api.types.is_integer_dtype(result["config"])

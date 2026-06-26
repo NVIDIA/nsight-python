@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from nsight import annotation, exceptions, thermovision, transformation, utils
+from nsight.utils import VerbosityLevel
 
 
 def _get_regular_params(
@@ -235,15 +236,14 @@ def run_profile_session(
     func: Callable[..., None],
     configs: List[Sequence[Any]],
     runs: int,
-    output_progress: bool,
-    output_detailed: bool,
+    verbosity: VerbosityLevel,
     thermal_mode: Literal["auto", "manual", "off"],
     thermal_wait: int | None = None,
     thermal_cont: int | None = None,
     thermal_timeout: int | None = None,
 ) -> None:
 
-    if output_progress:
+    if verbosity >= VerbosityLevel.INFO:
         print("")
         print("")
 
@@ -255,7 +255,7 @@ def run_profile_session(
             thermal_wait=thermal_wait,
             thermal_cont=thermal_cont,
             thermal_timeout=thermal_timeout,
-            verbose=output_detailed,
+            verbose=verbosity >= VerbosityLevel.DEBUG,
         )
         thermovision_initialized = thermal_controller.init()
         if not thermovision_initialized:
@@ -270,8 +270,8 @@ def run_profile_session(
     bar_length = 100
     progress_time: float = 0
 
-    # overwrite flag: we do not overwrite when output mode is detailed
-    overwrite_output = not output_detailed
+    # overwrite flag: we do not overwrite when output mode is debug
+    overwrite_output = verbosity < VerbosityLevel.DEBUG
     show_return_type_warning = False
     config_lengths: list[int] = list()
 
@@ -300,7 +300,7 @@ def run_profile_session(
 
         curr_config += 1
 
-        if output_progress:
+        if verbosity >= VerbosityLevel.INFO:
             utils.print_config(total_configs, curr_config, c, overwrite_output)
 
         for i in range(runs):
@@ -328,7 +328,7 @@ def run_profile_session(
 
             # Update time estimates every half second
             if time.time() - progress_time > 0.5:
-                if output_progress:
+                if verbosity >= VerbosityLevel.INFO:
                     utils.print_progress_bar(
                         total_runs,
                         curr_run,
@@ -339,7 +339,7 @@ def run_profile_session(
                 progress_time = time.time()
 
     # Update progress bar at end so it shows 100%
-    if output_progress:
+    if verbosity >= VerbosityLevel.INFO:
         utils.print_progress_bar(
             total_runs,
             curr_run,
@@ -377,14 +377,10 @@ class ProfileSettings:
     runs: int
     """Number of times each configuration should be executed."""
 
-    output_progress: bool
+    verbosity: VerbosityLevel
     """
-    Will display a progress bar on stdout during profiling
-    """
-
-    output_detailed: bool
-    """
-    Will display a progress bar, detailed output for each config along with the profiler logs
+    Controls verbosity of output. SILENT suppresses all output, INFO shows progress bar,
+    DEBUG shows progress bar plus per-config logs and profiler output.
     """
 
     derive_metric: (
@@ -596,7 +592,7 @@ class NsightProfiler:
                     raw_df,
                     func,
                     self.settings.normalize_against,
-                    self.settings.output_progress,
+                    self.settings.verbosity,
                 )
 
                 # Save to CSV if enabled
@@ -617,7 +613,7 @@ class NsightProfiler:
                         index=False,
                     )
 
-                    if self.settings.output_progress:
+                    if self.settings.verbosity >= VerbosityLevel.INFO:
                         print(
                             f"[NSIGHT-PYTHON] Refer to {raw_csv_path} for the raw profiling data"
                         )

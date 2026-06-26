@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 
 import nsight.collection as collection
 import nsight.visualization as visualization
+from nsight.utils import VerbosityLevel
 
 
 # Overload 1: When used without parentheses: @kernel
@@ -39,7 +40,7 @@ def kernel(
         | None
     ) = None,
     normalize_against: str | None = None,
-    output: Literal["quiet", "progress", "verbose"] = "progress",
+    verbosity: VerbosityLevel = VerbosityLevel.INFO,
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
     ignore_kernel_list: Sequence[str] | None = None,
     clock_control: Literal["base", "none"] = "none",
@@ -68,7 +69,7 @@ def kernel(
         | None
     ) = None,
     normalize_against: str | None = None,
-    output: Literal["quiet", "progress", "verbose"] = "progress",
+    verbosity: VerbosityLevel = VerbosityLevel.INFO,
     metrics: Sequence[str] = ["gpu__time_duration.sum"],
     ignore_kernel_list: Sequence[str] | None = None,
     clock_control: Literal["base", "none"] = "none",
@@ -219,11 +220,14 @@ def kernel(
         thermal_timeout: Maximum wait time in seconds for GPU to cool down.
             Default: 180 seconds
 
-        output: Controls the verbosity level of the output.
+        verbosity: Controls the verbosity level of the output. Selecting level N
+            enables output at all levels with value <= N. Default: ``VerbosityLevel.INFO``.
 
-            - ``"quiet"``: Suppresses all output.
-            - ``"progress"``: Shows a progress bar along with details about profiling and data extraction progress.
-            - ``"verbose"``: Displays the progress bar, configuration-specific logs, and profiler logs.
+            - ``VerbosityLevel.SILENT``: Suppresses all output.
+            - ``VerbosityLevel.INFO``: Shows a progress bar, profiling completion messages,
+              and report file paths.
+            - ``VerbosityLevel.DEBUG``: Adds configuration-specific logs, the full NCU CLI
+              command, and enables NCU verbose output.
 
         output_prefix: When specified, all intermediate profiler files are created with this prefix.
             For example, if `output_prefix="/home/user/run1_"`, the profiler will generate:
@@ -291,12 +295,6 @@ def kernel(
 
     def _create_profiler() -> collection.core.NsightProfiler:
         """Helper to create the profiler with the given settings."""
-        if output not in ("quiet", "progress", "verbose"):
-            raise ValueError("output must be 'quiet', 'progress' or 'verbose'")
-
-        output_progress = output == "progress" or output == "verbose"
-        output_detailed = output == "verbose"
-
         # Create the output paths needed for the ncu report, ncu logs and the CSVs
         prefix = output_prefix
         if "NSPY_NCU_PROFILE" not in os.environ:
@@ -311,8 +309,7 @@ def kernel(
         settings = collection.core.ProfileSettings(
             configs=configs,
             runs=runs,
-            output_progress=output_progress,
-            output_detailed=output_detailed,
+            verbosity=verbosity,
             derive_metric=derive_metric,
             normalize_against=normalize_against,
             thermal_mode=thermal_mode,

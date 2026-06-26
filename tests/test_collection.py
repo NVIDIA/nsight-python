@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from nsight import collection, exceptions
+from nsight.utils import VerbosityLevel
 
 
 def func_name(x: int, y: int, z: int) -> None:
@@ -28,7 +29,7 @@ def test_launch_ncu_runs_with_ncu_available(mock_run: MagicMock) -> None:
         cache_control="all",
         clock_control="base",
         replay_mode="kernel",
-        verbose=True,
+        verbosity=VerbosityLevel.DEBUG,
     )
 
     expected_calls = [
@@ -74,7 +75,7 @@ def test_launch_ncu_falls_back_without_ncu(mock_run: MagicMock) -> None:
             cache_control="all",
             clock_control="base",
             replay_mode="kernel",
-            verbose=False,
+            verbosity=VerbosityLevel.SILENT,
         )
 
     # Verify the exception message

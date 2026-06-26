@@ -5,8 +5,8 @@ from importlib.metadata import version
 
 from nsight import analyze
 from nsight.annotation import annotate
-from nsight.utils import col_panel, row_panel
+from nsight.utils import VerbosityLevel, col_panel, row_panel
 
 __version__ = version("nsight-python")
 
-__all__ = ["analyze", "annotate"]
+__all__ = ["analyze", "annotate", "VerbosityLevel"]

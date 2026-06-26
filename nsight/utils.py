@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import enum
 import functools
 import inspect
 import os
@@ -42,6 +43,20 @@ except ImportError:
     launch = None
 
 NVTX_DOMAIN = "nsight-python"
+
+
+class VerbosityLevel(enum.IntEnum):
+    """Verbosity level for ``@nsight.analyze.kernel``.
+
+    Selecting level N enables output at all levels with value <= N.
+    For example, ``INFO`` enables ERROR, WARNING, and INFO but not DEBUG.
+    """
+
+    SILENT = 0
+    ERROR = 1
+    WARNING = 2
+    INFO = 3
+    DEBUG = 4
 
 
 class row_panel:

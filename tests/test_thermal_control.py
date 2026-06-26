@@ -15,7 +15,7 @@ import nsight
     runs=10,
     thermal_mode="auto",
     combine_kernel_metrics=lambda x, y: x + y,
-    output="verbose",
+    verbosity=nsight.VerbosityLevel.DEBUG,
 )
 def heavy_gemm_kernel(n: int) -> None:
     """
