@@ -15,12 +15,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from nsight.utils import VerbosityLevel
+
 
 def aggregate_data(
     df: pd.DataFrame,
     func: Callable[..., Any],
     normalize_against: str | None,
-    output_progress: bool,
+    verbosity: VerbosityLevel,
 ) -> pd.DataFrame:
     """
     Groups and aggregates profiling data by configuration and annotation.
@@ -29,12 +31,12 @@ def aggregate_data(
         df: The raw profiling results.
         func: Function representing kernel configuration parameters.
         normalize_against: Name of the annotation to normalize against.
-        output_progress: Toggles the display of data processing logs
+        verbosity: Controls display of data processing logs
 
     Returns:
         Aggregated DataFrame and the (possibly normalized) metric name.
     """
-    if output_progress:
+    if verbosity >= VerbosityLevel.INFO:
         print("[NSIGHT-PYTHON] Processing profiled data")
 
     # Get the number of arguments in the signature of func (exclude *args/**kwargs)

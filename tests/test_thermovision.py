@@ -17,7 +17,12 @@ from nsight.thermovision import CUDA_CORE_AVAILABLE
 # ============================================================================
 
 
-@nsight.analyze.kernel(configs=[(1024,)], runs=1, thermal_mode="auto", output="quiet")
+@nsight.analyze.kernel(
+    configs=[(1024,)],
+    runs=1,
+    thermal_mode="auto",
+    verbosity=nsight.VerbosityLevel.SILENT,
+)
 def thermo_kernel(n: int) -> None:
     """Dummy Test kernel with thermovision enabled."""
     pass

@@ -240,7 +240,7 @@ def test_no_args_vs_with_args_dataframe_comparison() -> None:
     """Compare dataframe structure for functions with and without arguments."""
 
     # Test function with no args
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def no_args() -> None:
         a = torch.randn(64, 64, device="cuda")
         b = torch.randn(64, 64, device="cuda")
@@ -248,7 +248,9 @@ def test_no_args_vs_with_args_dataframe_comparison() -> None:
             _ = a + b
 
     # Test function with args
-    @nsight.analyze.kernel(configs=[(32,), (64,)], output="quiet")
+    @nsight.analyze.kernel(
+        configs=[(32,), (64,)], verbosity=nsight.VerbosityLevel.SILENT
+    )
     def with_args(size: int) -> None:
         a = torch.randn(size, size, device="cuda")
         b = torch.randn(size, size, device="cuda")
@@ -294,7 +296,9 @@ def test_no_args_function_with_derive_metric() -> None:
         """Convert time to arbitrary custom metric."""
         return time_ns / 1e6  # Convert to milliseconds
 
-    @nsight.analyze.kernel(runs=2, output="quiet", derive_metric=custom_metric)
+    @nsight.analyze.kernel(
+        runs=2, verbosity=nsight.VerbosityLevel.SILENT, derive_metric=custom_metric
+    )
     def no_args_with_transform() -> None:
         a = torch.randn(128, 128, device="cuda")
         b = torch.randn(128, 128, device="cuda")
@@ -449,7 +453,7 @@ configs = [(i,) for i in range(5)]
 
 
 @nsight.analyze.plot()
-@nsight.analyze.kernel(configs=configs, runs=7, output="verbose")
+@nsight.analyze.kernel(configs=configs, runs=7, verbosity=nsight.VerbosityLevel.DEBUG)
 def simple(x: int) -> None:
     a = torch.randn(64, 64, device="cuda")
     b = torch.randn(64, 64, device="cuda")
@@ -468,7 +472,7 @@ def test_simple() -> None:
 
 
 @nsight.analyze.plot()
-@nsight.analyze.kernel(configs=configs, runs=7, output="quiet")
+@nsight.analyze.kernel(configs=configs, runs=7, verbosity=nsight.VerbosityLevel.SILENT)
 def different_kernels(x: int) -> None:
     a = torch.randn(64, 64, device="cuda")
     b = torch.randn(64, 64, device="cuda")
@@ -633,7 +637,7 @@ def test_parameter_normalize_against_multiple_metrics() -> None:
 @nsight.analyze.kernel(
     configs=[(32,)],
     runs=1,
-    output="quiet",
+    verbosity=nsight.VerbosityLevel.SILENT,
     output_prefix="/tmp/test_output_prefix/test_prefix_",
 )
 def output_prefix_func(n: int) -> None:
@@ -733,7 +737,10 @@ def test_parameter_ignore_kernel_list(ignore_kernel_list: None | list[str]) -> N
     """Test the ignore_kernel_list parameter to filter out specific kernels"""
 
     @nsight.analyze.kernel(
-        configs=[(1024,)], runs=1, output="quiet", ignore_kernel_list=ignore_kernel_list
+        configs=[(1024,)],
+        runs=1,
+        verbosity=nsight.VerbosityLevel.SILENT,
+        ignore_kernel_list=ignore_kernel_list,
     )
     def ignore_kernel_func(n: int) -> None:
 
@@ -800,7 +807,7 @@ def test_parameter_clock_control(
         @nsight.analyze.kernel(
             configs=[(100, 100)],
             runs=1,
-            output="quiet",
+            verbosity=nsight.VerbosityLevel.SILENT,
             clock_control=clock_control,
         )
         def clock_control_func(x: int, y: int) -> None:
@@ -830,7 +837,7 @@ def test_parameter_cache_control(
         @nsight.analyze.kernel(
             configs=[(100, 100)],
             runs=1,
-            output="quiet",
+            verbosity=nsight.VerbosityLevel.SILENT,
             cache_control=cache_control,
         )
         def cache_control_func(x: int, y: int) -> None:
@@ -853,7 +860,7 @@ def test_parameter_thermal_mode(thermal_mode: Literal["auto", "manual", "off"]) 
     @nsight.analyze.kernel(
         configs=[(100, 100)],
         runs=1,
-        output="quiet",
+        verbosity=nsight.VerbosityLevel.SILENT,
         thermal_mode=thermal_mode,
     )
     def thermal_control_func(x: int, y: int) -> None:
@@ -890,7 +897,7 @@ def test_parameter_replay_mode(
         @nsight.analyze.kernel(
             configs=[(1024,)],
             runs=1,
-            output="quiet",
+            verbosity=nsight.VerbosityLevel.SILENT,
             replay_mode=replay_mode,
         )
         def multiple_kernels_replay_test(n: int) -> None:
@@ -1018,7 +1025,7 @@ def test_parameter_derive_metric(
     @nsight.analyze.kernel(
         configs=configs,
         runs=2,
-        output="quiet",
+        verbosity=nsight.VerbosityLevel.SILENT,
         derive_metric=derive_metric_func,
     )
     def profiled_func(x: int, y: int) -> None:
@@ -1093,37 +1100,33 @@ def test_parameter_derive_metric(
 
 
 # ============================================================================
-# output parameter test
+# verbosity parameter test
 # ============================================================================
 
 
-@pytest.mark.parametrize("output", ["quiet", "progress", "verbose", "invalid_value"])  # type: ignore[untyped-decorator]
+@pytest.mark.parametrize("verbosity", [nsight.VerbosityLevel.SILENT, nsight.VerbosityLevel.INFO, nsight.VerbosityLevel.DEBUG])  # type: ignore[untyped-decorator]
 def test_parameter_output(
     capsys: pytest.CaptureFixture,
-    output: Literal["quiet", "progress", "verbose", "invalid_value"],
+    verbosity: nsight.VerbosityLevel,
 ) -> None:
-    if output == "invalid_value":
-        with pytest.raises(
-            ValueError, match="output must be 'quiet', 'progress' or 'verbose'"
-        ):
-            nsight.analyze.kernel(output=output)(lambda x: x)  # type: ignore[call-overload]
+    @nsight.analyze.kernel(
+        configs=[(100, 100), (200, 200)], runs=2, verbosity=verbosity
+    )
+    def profiled_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_parameter_output")
 
-    else:
+    # Run profiling
+    profile_output = profiled_func()
+    assert profile_output is not None, "ProfileResults should be returned"
 
-        @nsight.analyze.kernel(configs=[(100, 100), (200, 200)], runs=2, output=output)
-        def profiled_func(x: int, y: int) -> None:
-            _simple_kernel_impl(x, y, "test_parameter_output")
+    # Check output
+    captured = capsys.readouterr()
+    if verbosity == nsight.VerbosityLevel.SILENT:
+        assert (
+            len(captured.out) == 0
+        ), "stdout should be empty for VerbosityLevel.SILENT"
 
-        # Run profiling
-        profile_output = profiled_func()
-        assert profile_output is not None, "ProfileResults should be returned"
-
-        # Check output
-        captured = capsys.readouterr()
-        if output == "quiet":
-            assert len(captured.out) == 0, "stdout should be empty for output='quiet'"
-
-        # TODO:"progress" and "verbose" modes
+    # TODO: INFO and DEBUG modes
 
 
 # ============================================================================
@@ -1399,7 +1402,7 @@ def test_function_with_kwargs() -> None:
     match the inflated parameter count.
     """
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_with_kwargs(x: int, y: int, **kwargs: Any) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1422,7 +1425,7 @@ def test_function_with_keyword_only_params() -> None:
     passed as keyword arguments for keyword-only params.
     """
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_with_kw_only(x: int, *, y: int) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1440,7 +1443,7 @@ def test_function_with_keyword_only_params() -> None:
 def test_function_with_args_and_keyword_only() -> None:
     """Test that functions with *args and keyword-only params after it work."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_mixed(x: int, *args: Any, y: int, **kwargs: Any) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1458,7 +1461,7 @@ def test_function_with_args_and_keyword_only() -> None:
 def test_default_values_omitted() -> None:
     """Test that configs can omit parameters that have default values."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_with_defaults(x: int, y: int, z: int = 64) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1477,7 +1480,7 @@ def test_default_values_omitted() -> None:
 def test_default_values_overridden() -> None:
     """Test that configs can explicitly provide values for defaulted params."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_with_defaults(x: int, y: int, z: int = 64) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1496,7 +1499,7 @@ def test_default_values_overridden() -> None:
 def test_keyword_only_default_omitted() -> None:
     """Test keyword-only params with defaults can be omitted from configs."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_kw_default(x: int, *, y: int = 32) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1514,7 +1517,7 @@ def test_keyword_only_default_omitted() -> None:
 def test_too_few_config_args_rejected() -> None:
     """Test that configs with fewer args than required params are rejected."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_two_required(x: int, y: int, z: int = 64) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1528,7 +1531,7 @@ def test_too_few_config_args_rejected() -> None:
 def test_too_many_config_args_rejected() -> None:
     """Test that configs with more args than total params are rejected."""
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_two_params(x: int, y: int) -> None:
         a = torch.randn(x, y, device="cuda")
         b = torch.randn(x, y, device="cuda")
@@ -1553,7 +1556,7 @@ def test_tuple_typed_function_args() -> None:
     was silently corrupted.
     """
 
-    @nsight.analyze.kernel(output="quiet")
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT)
     def kernel_with_tuple_args(
         size: int, mnkl: tuple[int, ...], tile_shape: tuple[int, ...]
     ) -> None:
@@ -1597,7 +1600,7 @@ def test_tuple_typed_function_args_multiple_metrics() -> None:
         "smsp__inst_issued.sum",
     ]
 
-    @nsight.analyze.kernel(output="quiet", metrics=metrics)
+    @nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.SILENT, metrics=metrics)
     def kernel_with_tuple_args_multi(
         size: int, mnkl: tuple[int, ...], pair: tuple[int, ...]
     ) -> None:

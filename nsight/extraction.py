@@ -11,7 +11,7 @@ Functions:
     extract_ncu_action_data(action, metrics):
         Extracts performance data for a specific kernel action from an NVIDIA Nsight Compute report.
 
-    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, output_progress, combine_kernel_metrics=None):
+    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, verbosity, combine_kernel_metrics=None):
         Processes the full NVIDIA Nsight Compute report and returns a pandas DataFrame containing performance metrics.
 """
 
@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 from nsight import exceptions, utils
-from nsight.utils import is_scalar
+from nsight.utils import VerbosityLevel, is_scalar
 
 DerivedValue: TypeAlias = float | int | None
 DerivedValueWithUnit: TypeAlias = tuple[DerivedValue, str]
@@ -84,7 +84,7 @@ def extract_df_from_report(
     func: Callable[..., Any],
     derive_metric: Callable[..., Any] | None,
     ignore_kernel_list: List[str] | None,
-    output_progress: bool,
+    verbosity: VerbosityLevel,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
 ) -> pd.DataFrame:
     """
@@ -108,13 +108,13 @@ def extract_df_from_report(
         RuntimeError: If multiple kernels are detected per config without a combining function.
         exceptions.ProfilerException: If profiling results are missing or incomplete.
     """
-    if output_progress:
+    if verbosity >= VerbosityLevel.INFO:
         print("[NSIGHT-PYTHON] Loading profiled data")
     try:
         report: ncu_report.IContext = ncu_report.load_report(report_path)
     except FileNotFoundError:
         raise exceptions.ProfilerException(
-            "No NVIDIA Nsight Compute report found. Please run nsight-python with `@nsight.analyze.kernel(output='verbose')`"
+            "No NVIDIA Nsight Compute report found. Please run nsight-python with `@nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.DEBUG)`"
             "to identify the issue."
         )
 
@@ -144,7 +144,7 @@ def extract_df_from_report(
     }
 
     # Extract all profiling data
-    if output_progress:
+    if verbosity >= VerbosityLevel.INFO:
         print(f"Extracting profiling data")
     profiling_data: dict[str, list[utils.NCUActionData]] = {}
     for range_idx in range(report.num_ranges()):
@@ -171,7 +171,7 @@ def extract_df_from_report(
                 profiling_data[annotation].append(data)
 
     for annotation, annotation_data in profiling_data.items():
-        if output_progress:
+        if verbosity >= VerbosityLevel.INFO:
             print(f"Extracting {annotation} profiling data")
 
         configs_repeated = [

@@ -154,7 +154,7 @@ def test_config_validation_errors(scenario_name: str) -> None:
         "clock_control": "none",
         "cache_control": "all",
         "thermal_mode": "auto",
-        "output": "quiet",
+        "verbosity": nsight.VerbosityLevel.SILENT,
     }
 
     if "decorator_configs" in scenario:
@@ -208,7 +208,7 @@ def test_runtime_extraction_errors(scenario_name: str) -> None:
         "clock_control": "none",
         "cache_control": "all",
         "thermal_mode": "auto",
-        "output": "quiet",
+        "verbosity": nsight.VerbosityLevel.SILENT,
     }
 
     benchmark_type = scenario.get("benchmark_type", "default")

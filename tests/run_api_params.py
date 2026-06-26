@@ -68,7 +68,7 @@ def resolve_all_params(
         "clock_control",
         "cache_control",
         "thermal_mode",
-        "output",
+        "verbosity",
         "output_prefix",
         "benchmark_type",
         "plot_title",
@@ -133,7 +133,12 @@ def get_app_args() -> argparse.Namespace:
         help="Enable or disable thermal control",
     )
     parser.add_argument(
-        "--output", "-o", default="progress", help="Output verbosity level"
+        "--verbosity",
+        "-o",
+        type=int,
+        default=3,
+        choices=[0, 3, 4],
+        help="Output verbosity level (0=SILENT, 3=INFO, 4=DEBUG)",
     )
     parser.add_argument(
         "--output-prefix",
@@ -199,7 +204,7 @@ def main(argv: List[str]) -> None:
         "clock_control": params["clock_control"],
         "cache_control": params["cache_control"],
         "thermal_mode": params["thermal_mode"],
-        "output": params["output"],
+        "verbosity": nsight.VerbosityLevel(params["verbosity"]),
         "output_prefix": params["output_prefix"],
     }
 

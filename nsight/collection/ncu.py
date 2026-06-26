@@ -21,6 +21,7 @@ from deepdiff import DeepHash
 from nsight import exceptions, extraction, utils
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
+from nsight.utils import VerbosityLevel
 
 
 def get_signature(
@@ -40,7 +41,7 @@ def launch_ncu(
     cache_control: Literal["none", "all"],
     clock_control: Literal["none", "base"],
     replay_mode: Literal["kernel", "range"],
-    verbose: bool,
+    verbosity: VerbosityLevel,
 ) -> str | None:
     """
     Launch NVIDIA Nsight Compute to profile the current script with specified options.
@@ -51,7 +52,7 @@ def launch_ncu(
         cache_control: Select cache control option
         clock_control: Select clock control option
         replay_mode: Select replay mode option
-        verbose: If False, log is written to a file (ncu_log.txt)
+        verbosity: Controls output verbosity level.
 
     Raises:
         NCUNotAvailableError: If NCU is not available on the system.
@@ -84,11 +85,16 @@ def launch_ncu(
     replay = f"--replay-mode {replay_mode}"
     log_path = os.path.splitext(report_path)[0] + ".log"
     log = f"--log-file {log_path}"
+
     nvtx = f'--nvtx --nvtx-include "regex:{utils.NVTX_DOMAIN}@.+/"'
     metrics_str = ",".join(metrics)
+    verbose_flag = "--verbose" if verbosity >= VerbosityLevel.DEBUG else ""
 
     # Construct the ncu command
-    ncu_command = f"""ncu {log} {cache} {clocks} {replay} {nvtx} --metrics {metrics_str} -f -o {report_path} {sys.executable} {script_path} {script_args}"""
+    ncu_command = f"""ncu {log} {cache} {clocks} {replay} {nvtx} {verbose_flag} --metrics {metrics_str} -f -o {report_path} {sys.executable} {script_path} {script_args}"""
+
+    if verbosity >= VerbosityLevel.DEBUG:
+        print(f"[NSIGHT-PYTHON] NCU command: {ncu_command}")
 
     # Check if ncu is available on the system
     ncu_available = False
@@ -113,19 +119,16 @@ def launch_ncu(
             )
 
             return log_path
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             log_parser = utils.NCULogParser()
             error_logs = log_parser.get_logs(log_path, "ERROR")
-
-            # Create error context
-            error_context = NCUErrorContext(
-                errors=error_logs,
-                log_file_path=log_path,
-                metrics=metrics,
-            )
-
-            error_message = utils.format_ncu_error_message(error_context)
-            raise exceptions.ProfilerException(error_message) from None
+            raise exceptions.ProfilerException(
+                utils.format_ncu_error_message(
+                    NCUErrorContext(
+                        errors=error_logs, log_file_path=log_path, metrics=metrics
+                    )
+                )
+            ) from None
     else:
         subprocess.run([sys.executable, script_path], env=env)
         raise exceptions.NCUNotAvailableError(
@@ -230,10 +233,10 @@ class NCUCollector(core.NsightCollector):
                 self.cache_control,
                 self.clock_control,
                 self.replay_mode,
-                settings.output_detailed,
+                settings.verbosity,
             )
 
-            if settings.output_progress:
+            if settings.verbosity >= VerbosityLevel.INFO:
                 print("[NSIGHT-PYTHON] Profiling completed successfully !")
                 print(
                     f"[NSIGHT-PYTHON] Refer to {report_path} for the NVIDIA Nsight Compute CLI report"
@@ -250,7 +253,7 @@ class NCUCollector(core.NsightCollector):
                 func,
                 settings.derive_metric,
                 self.ignore_kernel_list,  # type: ignore[arg-type]
-                settings.output_progress,
+                settings.verbosity,
                 self.combine_kernel_metrics,
             )
 
@@ -264,7 +267,7 @@ class NCUCollector(core.NsightCollector):
             if get_signature(func, configs_list) != sig:
                 return None
 
-            if settings.output_progress:
+            if settings.verbosity >= VerbosityLevel.INFO:
                 utils.print_header(
                     f"Profiling {func.__name__}",
                     f"{len(configs_list)} configurations, {settings.runs} runs each",
@@ -274,8 +277,7 @@ class NCUCollector(core.NsightCollector):
                 func,
                 configs_list,
                 settings.runs,
-                settings.output_progress,
-                settings.output_detailed,
+                settings.verbosity,
                 settings.thermal_mode,
                 settings.thermal_wait,
                 settings.thermal_cont,

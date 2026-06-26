@@ -20,7 +20,9 @@ class DummyTestException(Exception):
 
 
 def test_annotate_context_manager_simple() -> None:
-    @nsight.analyze.kernel(configs=configs, runs=7, output="progress")
+    @nsight.analyze.kernel(
+        configs=configs, runs=7, verbosity=nsight.VerbosityLevel.INFO
+    )
     def annotate_context_manager_simple(x: int) -> None:
         a = torch.randn(64, 64, device="cuda")
         b = torch.randn(64, 64, device="cuda")
@@ -35,7 +37,9 @@ def test_annotate_decorator_simple() -> None:
     def einsum(a: torch.Tensor, b: torch.Tensor) -> Any:
         return a + b
 
-    @nsight.analyze.kernel(configs=configs, runs=7, output="quiet")
+    @nsight.analyze.kernel(
+        configs=configs, runs=7, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def annotate_decorator_simple(n: int) -> None:
         a = torch.randn(64, 64, device="cuda")
         b = torch.randn(64, 64, device="cuda")
@@ -59,7 +63,9 @@ def test_annotate_decorator_simple() -> None:
     ],
 )  # type: ignore[untyped-decorator]
 def test_annotate_context_manager(ignore_failures: bool) -> None:
-    @nsight.analyze.kernel(configs=configs, runs=7, output="quiet")
+    @nsight.analyze.kernel(
+        configs=configs, runs=7, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def annotate_context_manager(n: int) -> None:
         a = torch.randn(64, 64, device="cuda")
 
@@ -103,7 +109,9 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
             _ = a + a
         raise DummyTestException()
 
-    @nsight.analyze.kernel(configs=configs, runs=7, output="quiet")
+    @nsight.analyze.kernel(
+        configs=configs, runs=7, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def annotate_decorator(n: int) -> None:
         a = torch.randn(64, 64, device="cuda")
 
@@ -125,7 +133,9 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
 def test_active_annotations_nested() -> None:
     """Test that nested annotations raise ValueError with context manager."""
 
-    @nsight.analyze.kernel(configs=[(64,)], runs=10, output="quiet")
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=10, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def nested_annotation_test(n: int) -> None:
         a = torch.randn(n, n, device="cuda")
         b = torch.randn(n, n, device="cuda")
@@ -147,7 +157,9 @@ def test_active_annotations_nested() -> None:
 def test_active_annotations_duplicate_name() -> None:
     """Test that duplicate annotation names raise ValueError even when sequential."""
 
-    @nsight.analyze.kernel(configs=[(64,)], runs=10, output="quiet")
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=10, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def duplicate_annotation_test(n: int) -> None:
         a = torch.randn(n, n, device="cuda")
         b = torch.randn(n, n, device="cuda")
@@ -173,7 +185,9 @@ def test_active_annotations_duplicate_name_decorator() -> None:
     def annotated_function(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         return a + b
 
-    @nsight.analyze.kernel(configs=[(64,)], runs=10, output="quiet")
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=10, verbosity=nsight.VerbosityLevel.SILENT
+    )
     def duplicate_annotation_decorator_test(n: int) -> None:
         a = torch.randn(n, n, device="cuda")
         b = torch.randn(n, n, device="cuda")
