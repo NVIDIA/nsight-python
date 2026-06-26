@@ -127,17 +127,15 @@ class ThermalController:
 
         return self._is_temp_retrieval_supported()
 
-    def _map_cuda_to_system_device(self, cuda_ordinal: int | None) -> Any:
-        """Map a CUDA device ordinal to its corresponding NVML system device.
+    def _map_cuda_to_system_device(self, cuda_device: Any) -> Any:
+        """Map a CUDA device object to its corresponding NVML system device.
 
         Args:
-            cuda_ordinal: CUDA ordinal to resolve. ``None`` means current CUDA
-                device context.
+            cuda_device: CUDA device object to map.
 
         Returns:
             The corresponding NVML ``system.Device``.
         """
-        cuda_device = CudaDevice(cuda_ordinal)
         system_device = cuda_device.to_system_device()
         self._current_cuda_device_id = cuda_device.device_id
         return system_device
@@ -159,7 +157,13 @@ class ThermalController:
         try:
             # ``None`` selects the current CUDA device and already reflects
             # CUDA_VISIBLE_DEVICES. Mapping to system device is done by UUID.
-            system_device = self._map_cuda_to_system_device(cuda_ordinal)
+            if self.verbose and cuda_ordinal is None:
+                print(
+                    "[Thermovision] thermal_device not set; using current CUDA device context "
+                    "(set thermal_device to pin monitoring)."
+                )
+            cuda_device = CudaDevice(cuda_ordinal)
+            system_device = self._map_cuda_to_system_device(cuda_device)
             if self.verbose:
                 print(
                     f"[Thermovision] Monitoring CUDA device {self._current_cuda_device_id} "
@@ -191,14 +195,15 @@ class ThermalController:
             return
 
         try:
-            current_cuda_id = CudaDevice(None).device_id
+            cuda_device = CudaDevice(None)
+            current_cuda_id = cuda_device.device_id
             if (
                 self.device is not None
                 and self._current_cuda_device_id == current_cuda_id
             ):
                 return
 
-            self.device = self._map_cuda_to_system_device(None)
+            self.device = self._map_cuda_to_system_device(cuda_device)
             if self.verbose:
                 print(
                     f"[Thermovision] Switched monitoring to CUDA device {self._current_cuda_device_id} "
