@@ -49,7 +49,7 @@ jobs:
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
-      - name: "Install NCU"
+      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
         run: |
           curl -L -o ncu_installer.run "${{ matrix.platform.ncu_installer_url }}"
           chmod +x ncu_installer.run
