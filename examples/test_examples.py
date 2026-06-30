@@ -2,26 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib
-import subprocess
-import sys
 
 import pytest
-
-
-def get_cuda_dev_cc_major(device_id: int) -> int:
-    # Run in a subprocess to avoid initializing CUDA in the pytest process during collection,
-    # which would prevent nsight's injection library from loading before CUDA init.
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            f"import torch; print(torch.cuda.get_device_properties({device_id}).major)",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return int(result.stdout.strip())
 
 
 def test_00_minimal() -> None:
@@ -85,11 +67,6 @@ def test_11_output_csv() -> None:
     output_csv.main()
 
 
-# skip cuTile test on CC 9.x as Cuda Toolkit 13.2 used for testing does not support cuda-tile on CC 9.x (Hopper)
-@pytest.mark.skipif(
-    get_cuda_dev_cc_major(0) == 9,
-    reason="cuda-tile not supported on CC 9.x in CUDA Toolkit 13.2",
-)  # type: ignore[untyped-decorator]
 def test_12_cutile() -> None:
     cutile = importlib.import_module("examples.12_cutile")
     cutile.main()
