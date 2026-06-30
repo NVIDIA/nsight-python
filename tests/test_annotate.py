@@ -74,7 +74,7 @@ def test_annotate_context_manager(ignore_failures: bool) -> None:
                 with nsight.annotate(
                     "ignore_failures=false", ignore_failures=ignore_failures
                 ):
-                    # WAR until this issue is fixed: the parent process errors with ProfilerException if the ncu (child) process does not generate an ncu report. Hence adding a kernel launch before the exception to make sure an ncu report is generated
+                    # ncu requires at least one profiled kernel to emit a report; launch a kernel before raising so the report is generated
                     _ = a + a
                     raise DummyTestException()
         else:
@@ -104,7 +104,7 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
         f"ignore_failures={ignore_failures}", ignore_failures=ignore_failures
     )
     def raise_exception(a: torch.Tensor, launch_kernel: bool) -> None:
-        # WAR until this issue is fixed: the parent process errors with ProfilerException if the ncu (child) process does not generate an ncu report. Hence adding a kernel launch before the exception to make sure an ncu report is generated
+        # ncu requires at least one profiled kernel to emit a report; launch a kernel before raising so the report is generated
         if launch_kernel:
             _ = a + a
         raise DummyTestException()

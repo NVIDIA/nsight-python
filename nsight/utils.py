@@ -25,13 +25,7 @@ from nsight.exceptions import (
 
 # Try to import cuda-core (optional dependency)
 try:
-    from cuda.core import (
-        Device,
-        LaunchConfig,
-        Program,
-        ProgramOptions,
-        launch,
-    )
+    from cuda.core import Device, LaunchConfig, Program, ProgramOptions, launch
 
     CUDA_CORE_AVAILABLE = True
 except ImportError:

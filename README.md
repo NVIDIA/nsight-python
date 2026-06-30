@@ -60,7 +60,3 @@ Review the [CONTRIBUTING.md](Contributing.md) file for information on how to con
 ## License
 
 All files hosted in this repository are subject to the [Apache 2.0](LICENSE) license.
-
-## Disclaimer
-
-nsight-python is in a Beta state. Beta products may not be fully functional, may contain errors or design flaws, and may be changed at any time without notice. We appreciate your feedback to improve and iterate on our Beta products.
