@@ -2,15 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib
-from typing import Any
+import subprocess
+import sys
 
 import pytest
-import torch
 
 
-def get_cuda_dev_cc_major(device_id: int) -> Any:
-    props = torch.cuda.get_device_properties(device_id)
-    return props.major
+def get_cuda_dev_cc_major(device_id: int) -> int:
+    # Run in a subprocess to avoid initializing CUDA in the pytest process during collection,
+    # which would prevent nsight's injection library from loading before CUDA init.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import torch; print(torch.cuda.get_device_properties({device_id}).major)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return int(result.stdout.strip())
 
 
 def test_00_minimal() -> None:

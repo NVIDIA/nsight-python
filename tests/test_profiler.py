@@ -392,28 +392,12 @@ def test_configs_with_scalar_values(
         ):
             configs_with_scalar_values()
     else:
+        result = configs_with_scalar_values()
+        df = result.to_dataframe()
+
         if isinstance(configs, Generator):
-            # Define a different function to avoid issues arising from script relaunch
-            @nsight.analyze.kernel(configs=configs)
-            def configs_with_scalar_values_generators(n: int) -> None:
-                _simple_kernel_impl(n, n)
-
-            result = configs_with_scalar_values_generators()
-            df = result.to_dataframe()
-
-            # Check if the configs are correct
             assert df["n"].to_list() == [1, 2, 3, 4, 5]
-
         elif isinstance(configs, range):
-            # Define a different function to avoid issues arising from script relaunch
-            @nsight.analyze.kernel(configs=configs)
-            def configs_with_scalar_values_range(n: int) -> None:
-                _simple_kernel_impl(n, n)
-
-            result = configs_with_scalar_values_range()
-            df = result.to_dataframe()
-
-            # Check if the configs are correct
             assert df["n"].to_list() == [1, 2, 3]
 
 
@@ -664,10 +648,8 @@ def test_parameter_output_prefix() -> None:
                     file_path
                 ), f"Expected file not found: {file_path}"
     finally:
-        # Cleanup after test
-        if "NSPY_NCU_PROFILE" not in os.environ:
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
 
 
 # ----------------------------------------------------------------------------
@@ -691,40 +673,35 @@ def test_parameter_output_csv(output_csv: bool) -> None:
         # Run the profiling
         profile_output = output_csv_func()
 
-        # Verify that ProfileResults is returned (even if CSV is not dumped)
-        if "NSPY_NCU_PROFILE" not in os.environ:
+        # Check for CSV files based on output_csv value
+        csv_files = [
+            f"{output_dir}test_profiled_data-output_csv_func-0.csv",
+            f"{output_dir}test_processed_data-output_csv_func-0.csv",
+        ]
 
-            # Check for CSV files based on output_csv value
-            csv_files = [
-                f"{output_dir}test_profiled_data-output_csv_func-0.csv",
-                f"{output_dir}test_processed_data-output_csv_func-0.csv",
-            ]
-
-            for file_path in csv_files:
-                if output_csv:
-                    assert os.path.exists(
-                        file_path
-                    ), f"CSV file should exist when output_csv=True: {file_path}"
-                else:
-                    assert not os.path.exists(
-                        file_path
-                    ), f"CSV file should not exist when output_csv=False: {file_path}"
-
-            # NCU report files should always exist regardless of output_csv
-            ncu_files = [
-                f"{output_dir}test_ncu-output-output_csv_func-0.ncu-rep",
-                f"{output_dir}test_ncu-output-output_csv_func-0.log",
-            ]
-
-            for file_path in ncu_files:
+        for file_path in csv_files:
+            if output_csv:
                 assert os.path.exists(
                     file_path
-                ), f"NCU file should always exist: {file_path}"
+                ), f"CSV file should exist when output_csv=True: {file_path}"
+            else:
+                assert not os.path.exists(
+                    file_path
+                ), f"CSV file should not exist when output_csv=False: {file_path}"
+
+        # NCU report files should always exist regardless of output_csv
+        ncu_files = [
+            f"{output_dir}test_ncu-output-output_csv_func-0.ncu-rep",
+            f"{output_dir}test_ncu-output-output_csv_func-0.log",
+        ]
+
+        for file_path in ncu_files:
+            assert os.path.exists(
+                file_path
+            ), f"NCU file should always exist: {file_path}"
     finally:
-        # Cleanup after test
-        if "NSPY_NCU_PROFILE" not in os.environ:
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
 
 
 # ============================================================================

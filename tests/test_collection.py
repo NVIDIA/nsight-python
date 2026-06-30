@@ -1,88 +1,58 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import subprocess
-import sys
+import os
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nsight import collection, exceptions
-from nsight.utils import VerbosityLevel
+from nsight import VerbosityLevel, collection
 
 
 def func_name(x: int, y: int, z: int) -> None:
-    None
+    pass
 
 
-@patch("subprocess.run")
-def test_launch_ncu_runs_with_ncu_available(mock_run: MagicMock) -> None:
-    # Simulate "ncu --version" runs successfully, and so does the main profiling command
-    mock_run.side_effect = [None, None]  # ncu --version  # actual ncu profiling run
+@patch("subprocess.Popen")
+def test_launch_ncu_runs_with_ncu_available(mock_popen: MagicMock) -> None:
+    mock_popen.return_value = MagicMock()
+
+    target_pid = os.getpid()
 
     collection.ncu.launch_ncu(
         "report.ncu-rep",
-        func_name,
-        [(1,), (2,), (3,)],
         metrics=["sm__cycles_elapsed.avg"],
         cache_control="all",
         clock_control="base",
         replay_mode="kernel",
-        verbosity=VerbosityLevel.DEBUG,
+        verbosity=VerbosityLevel.SILENT,
     )
 
-    expected_calls = [
-        call(
-            ["ncu", "--version"],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ),
-        call(
-            pytest.helpers.mock_any_command_string(),
-            shell=True,
-            check=True,
-            env=pytest.helpers.env_contains(
-                {
-                    "NSPY_NCU_PROFILE": collection.ncu.get_signature(
-                        func_name, [(1,), (2,), (3,)]
-                    )
-                }
-            ),
-        ),
+    assert mock_popen.call_count == 1
+    cmd = mock_popen.call_args_list[0].args[0]
+    assert cmd == [
+        "ncu",
+        "--mode",
+        "attach",
+        "--process-id",
+        str(target_pid),
+        "--nvtx-include",
+        "regex:nsight-python@.+/",
+        "--log-file",
+        "report.log",
+        "--cache-control",
+        "all",
+        "--clock-control",
+        "base",
+        "--replay-mode",
+        "kernel",
+        "--metrics",
+        "sm__cycles_elapsed.avg",
+        "-f",
+        "-o",
+        "report.ncu-rep",
     ]
-
-    # Check if subprocess.run was called twice
-    assert mock_run.call_count == 2
-    assert "--nvtx-include" in mock_run.call_args_list[1].args[0]
-
-
-@patch("subprocess.run")
-def test_launch_ncu_falls_back_without_ncu(mock_run: MagicMock) -> None:
-    # Simulate "ncu --version" fails, fallback to run the script and raise NCUNotAvailableError
-    mock_run.side_effect = [
-        FileNotFoundError(),  # ncu --version
-        None,  # fallback to plain script run
-    ]
-
-    with pytest.raises(exceptions.NCUNotAvailableError) as exc_info:
-        collection.ncu.launch_ncu(
-            "report.ncu-rep",
-            func_name,
-            [(1,), (2,), (3,)],
-            metrics=["metric"],
-            cache_control="all",
-            clock_control="base",
-            replay_mode="kernel",
-            verbosity=VerbosityLevel.SILENT,
-        )
-
-    # Verify the exception message
-    assert "Nsight Compute CLI (ncu) is not available" in str(exc_info.value)
-
-    assert mock_run.call_count == 2
-    assert sys.executable in mock_run.call_args_list[1].args[0]
 
 
 # Optional: Add helpers if you want to cleanly test env vars or command strings

@@ -27,7 +27,6 @@ dependencies = [
 ]
 
 classifiers = [
-    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: Apache Software License",
     "Environment :: GPU :: NVIDIA CUDA",
     "Intended Audience :: Developers",

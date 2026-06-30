@@ -28,7 +28,6 @@ Welcome to the Nsight Python documentation!
    release_notes/release_notes
    release_notes/known_issues
    release_notes/support
-   release_notes/disclaimer
 
 
 .. toctree::

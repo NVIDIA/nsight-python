@@ -297,14 +297,11 @@ def kernel(
         """Helper to create the profiler with the given settings."""
         # Create the output paths needed for the ncu report, ncu logs and the CSVs
         prefix = output_prefix
-        if "NSPY_NCU_PROFILE" not in os.environ:
-            if prefix is None:
-                prefix = tempfile.mkdtemp(prefix="nspy_")
-                prefix = os.path.join(
-                    prefix, ""
-                )  # Adds a trailing forward/backward slash
-            else:
-                os.makedirs(os.path.dirname(prefix) or ".", exist_ok=True)
+        if prefix is None:
+            prefix = tempfile.mkdtemp(prefix="nspy_")
+            prefix = os.path.join(prefix, "")  # Adds a trailing forward/backward slash
+        else:
+            os.makedirs(os.path.dirname(prefix) or ".", exist_ok=True)
 
         settings = collection.core.ProfileSettings(
             configs=configs,
@@ -476,30 +473,29 @@ def plot(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             result = func(*args, **kwargs)
 
-            if "NSPY_NCU_PROFILE" not in os.environ:
-                # Legalize the user-provided metric for plotting
-                legalized_metric = _legalize_metric(result, metric)
+            # Legalize the user-provided metric for plotting
+            legalized_metric = _legalize_metric(result, metric)
 
-                visualization.visualize(
-                    result.to_dataframe(),
-                    metric=legalized_metric,
-                    row_panels=row_panels,
-                    col_panels=col_panels,
-                    x_keys=x_keys,
-                    print_data=print_data,
-                    title=title,
-                    filename=filename,
-                    ylabel=ylabel or "",
-                    annotate_points=annotate_points,
-                    show_avg=show_avg,
-                    show_geomean=show_geomean,
-                    plot_type=plot_type,
-                    plot_width=plot_width,
-                    plot_height=plot_height,
-                    variant_fields=variant_fields,
-                    variant_annotations=variant_annotations,
-                    plot_callback=plot_callback,
-                )
+            visualization.visualize(
+                result.to_dataframe(),
+                metric=legalized_metric,
+                row_panels=row_panels,
+                col_panels=col_panels,
+                x_keys=x_keys,
+                print_data=print_data,
+                title=title,
+                filename=filename,
+                ylabel=ylabel or "",
+                annotate_points=annotate_points,
+                show_avg=show_avg,
+                show_geomean=show_geomean,
+                plot_type=plot_type,
+                plot_width=plot_width,
+                plot_height=plot_height,
+                variant_fields=variant_fields,
+                variant_annotations=variant_annotations,
+                plot_callback=plot_callback,
+            )
             return result
 
         return wrapper
