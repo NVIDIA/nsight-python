@@ -44,6 +44,13 @@ jobs:
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
+      - name: "Install NCU"
+        run: |
+          curl -L -o ncu_installer.run "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-x86_64-2026.2.1.6.run"
+          chmod +x ncu_installer.run
+          ./ncu_installer.run -- -noprompt
+          rm ncu_installer.run
+          echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
       - name: "Running Tests"
         run: |
           pip install hatch
