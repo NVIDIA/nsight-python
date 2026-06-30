@@ -26,9 +26,17 @@ pip install torch --index-url https://download.pytorch.org/whl/cuXXX
 
 Visit [pytorch.org](https://pytorch.org/get-started/locally/) for installation commands matching your specific CUDA version.
 
+#### cuTile Python (Optional)
+
+For the cuTile example (`13_cutile.py`):
+
+Refer [Installing cuTile Python](https://docs.nvidia.com/cuda/cutile-python/quickstart.html#installing-cutile-python).
+
+Refer [cuTile Python Prerequisites section](https://docs.nvidia.com/cuda/cutile-python/quickstart.html#prerequisites).
+
 #### Triton (Optional)
 
-For the Triton examples (`07_triton_minimal.py`):
+For the Triton example (`07_triton_minimal.py`):
 
 ```bash
 pip install triton
@@ -105,3 +113,6 @@ This will profile a simple matrix multiplication and generate a plot showing the
   - Using `output_csv` parameter to enable/disable CSV file generation
   - Using `output_prefix` to specify output file location and naming
   - Reading and displaying generated CSV files
+
+- **`12_cutile.py`** - Profiling a cuTile kernel
+  - Comparing against PyTorch kernel for different problem sizes
