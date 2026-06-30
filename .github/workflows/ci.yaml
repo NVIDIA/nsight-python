@@ -40,7 +40,7 @@ jobs:
       matrix:
         runner: [linux-amd64-gpu-h100-latest-1, linux-arm64-gpu-l4-latest-1]
     container:
-      image: nvcr.io/nvidia/pytorch:26.05-py3
+      image: nvcr.io/nvidia/pytorch:26.06-py3
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
