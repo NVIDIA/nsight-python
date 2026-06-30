@@ -35,15 +35,27 @@ jobs:
           hatch run docs:build
 
   test:
-    runs-on: ${{ matrix.runner }}
+    name: test (${{ matrix.platform.runner }})
+    runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
-        runner: [linux-amd64-gpu-h100-latest-1, linux-arm64-gpu-l4-latest-1]
+        platform:
+          - runner: linux-amd64-gpu-h100-latest-1
+            ncu_installer_url: "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-x86_64-2026.2.1.6.run"
+          - runner: linux-arm64-gpu-l4-latest-1
+            ncu_installer_url: "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-sbsa-2026.2.1.6.run"
     container:
       image: nvcr.io/nvidia/pytorch:26.06-py3
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
+      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
+        run: |
+          curl -L -o ncu_installer.run "${{ matrix.platform.ncu_installer_url }}"
+          chmod +x ncu_installer.run
+          ./ncu_installer.run -- -noprompt
+          rm ncu_installer.run
+          echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
       - name: "Running Tests"
         run: |
           pip install hatch
