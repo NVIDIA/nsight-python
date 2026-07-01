@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from unittest.mock import patch
+import os
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -184,6 +186,121 @@ def test_adaptive_thermal_control_decrease() -> None:
     assert (
         controller.thermal_cont == 17
     ), f"Expected thermal_cont=17, got {controller.thermal_cont}"
+
+
+def test_resolve_device_uses_current_cuda_device() -> None:
+    """Without thermal_device, the current CUDA device is monitored (honors CUDA_VISIBLE_DEVICES)."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="auto", verbose=False)
+
+    system_device = MagicMock(name="system_device")
+    cuda_device = MagicMock(name="cuda_device")
+    cuda_device.to_system_device.return_value = system_device
+    cuda_device_cls = MagicMock(return_value=cuda_device)
+
+    with patch("nsight.thermovision.CudaDevice", cuda_device_cls):
+        controller.init()
+
+    # CudaDevice(None) selects the CUDA runtime's current device.
+    cuda_device_cls.assert_called_once_with(None)
+    cuda_device.to_system_device.assert_called_once_with()
+    assert controller.device is system_device
+
+
+def test_resolve_device_honors_explicit_thermal_device() -> None:
+    """An explicit thermal_device ordinal selects that CUDA device for monitoring."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="auto", thermal_device=3, verbose=False)
+
+    system_device = MagicMock(name="system_device")
+    cuda_device = MagicMock(name="cuda_device")
+    cuda_device.to_system_device.return_value = system_device
+    cuda_device_cls = MagicMock(return_value=cuda_device)
+
+    with patch("nsight.thermovision.CudaDevice", cuda_device_cls):
+        controller.init()
+
+    cuda_device_cls.assert_called_once_with(3)
+    assert controller.device is system_device
+
+
+def test_resolve_device_falls_back_to_physical_gpu_zero() -> None:
+    """If CUDA-to-NVML mapping fails, monitoring falls back to physical GPU 0."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="auto", verbose=False)
+
+    fallback_device = MagicMock(name="fallback_device")
+    cuda_device_cls = MagicMock(side_effect=RuntimeError("no cuda"))
+
+    with (
+        patch("nsight.thermovision.CudaDevice", cuda_device_cls),
+        patch(
+            "nsight.thermovision.system.Device", return_value=fallback_device
+        ) as mock_system_device,
+    ):
+        controller.init()
+
+    mock_system_device.assert_called_once_with(index=0)
+    assert controller.device is fallback_device
+
+
+def test_throttle_guard_refreshes_when_current_cuda_device_changes() -> None:
+    """Without explicit thermal_device, guard refresh follows CUDA device switches."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="auto", verbose=False)
+
+    system_device_0 = MagicMock(name="system_device_0")
+    system_device_1 = MagicMock(name="system_device_1")
+
+    cuda_device_0 = MagicMock(name="cuda_device_0")
+    cuda_device_0.device_id = 0
+    cuda_device_0.to_system_device.return_value = system_device_0
+
+    cuda_device_1 = MagicMock(name="cuda_device_1")
+    cuda_device_1.device_id = 1
+    cuda_device_1.to_system_device.return_value = system_device_1
+
+    with (
+        patch(
+            "nsight.thermovision.CudaDevice",
+            side_effect=[cuda_device_0, cuda_device_1, cuda_device_1],
+        ),
+        patch(
+            "nsight.thermovision.ThermalController._get_gpu_tlimit", return_value=100
+        ),
+    ):
+        controller.init()
+        assert controller.device is system_device_0
+        controller.throttle_guard()
+
+    assert controller.device is system_device_1
+
+
+def test_throttle_guard_keeps_explicit_thermal_device_binding() -> None:
+    """With explicit thermal_device, guard should not refresh from current device."""
+    from nsight.thermovision import ThermalController
+
+    controller = ThermalController(thermal_mode="auto", thermal_device=2, verbose=False)
+
+    system_device = MagicMock(name="system_device")
+    cuda_device = MagicMock(name="cuda_device")
+    cuda_device.to_system_device.return_value = system_device
+
+    with (
+        patch("nsight.thermovision.CudaDevice", return_value=cuda_device) as mock_cuda,
+        patch(
+            "nsight.thermovision.ThermalController._get_gpu_tlimit", return_value=100
+        ),
+    ):
+        controller.init()
+        controller.throttle_guard()
+
+    assert mock_cuda.call_count == 1
+    assert controller.device is system_device
 
 
 def test_fixed_mode_no_adaptation() -> None:

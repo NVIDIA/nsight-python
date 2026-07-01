@@ -17,6 +17,7 @@ learns optimal cooling thresholds based on workload characteristics.
 
 # Guard NVML imports
 try:
+    from cuda.core import Device as CudaDevice
     from cuda.core import system
 
     CUDA_CORE_AVAILABLE = True
@@ -52,6 +53,7 @@ class ThermalController:
         thermal_wait: int | None = None,
         thermal_cont: int | None = None,
         thermal_timeout: int | None = None,
+        thermal_device: int | None = None,
         verbose: bool = False,
     ):
         """Initialize thermal controller.
@@ -71,10 +73,17 @@ class ThermalController:
             thermal_timeout: Maximum wait time in seconds for GPU to cool down.
                 If None, uses default (180 seconds).
                 Default: None
+            thermal_device: CUDA device ordinal to monitor for thermal throttling.
+                If set, monitor that CUDA device. If None, monitor the current
+                CUDA device context. Device numbering follows CUDA runtime ordinals and
+                honors ``CUDA_VISIBLE_DEVICES``.
+                Default: None
             verbose: Whether to print thermal messages.
                 Default: False
         """
         self.device: Any = None
+        self.thermal_device = thermal_device
+        self._current_cuda_device_id: int | None = None
         self.thermal_mode = thermal_mode
 
         # Set adaptive_mode based on thermal_mode
@@ -101,6 +110,9 @@ class ThermalController:
     def init(self) -> bool:
         """Initialize NVML and get GPU handle.
 
+        Resolves the NVML device that corresponds to the profiled CUDA device
+        (honoring ``CUDA_VISIBLE_DEVICES``).
+
         Returns:
             True if temperature retrieval is supported, False otherwise.
         """
@@ -108,9 +120,100 @@ class ThermalController:
             return False
 
         if self.device is None:
-            self.device = system.Device(index=0)
+            resolved_device = self._resolve_device()
+            if resolved_device is None:
+                return False
+            self.device = resolved_device
 
         return self._is_temp_retrieval_supported()
+
+    def _map_cuda_to_system_device(self, cuda_device: Any) -> Any:
+        """Map a CUDA device object to its corresponding NVML system device.
+
+        Args:
+            cuda_device: CUDA device object to map.
+
+        Returns:
+            The corresponding NVML ``system.Device``.
+        """
+        system_device = cuda_device.to_system_device()
+        self._current_cuda_device_id = cuda_device.device_id
+        return system_device
+
+    def _resolve_device(self) -> Any:
+        """Resolve the NVML device to monitor.
+
+        The CUDA device (explicitly requested via ``thermal_device`` or the
+        current CUDA device context) is mapped to its underlying physical
+        NVML device by UUID. This ensures the GPU actually running the profiled
+        kernels is monitored, even when ``CUDA_VISIBLE_DEVICES`` remaps device
+        ordinals.
+
+        Returns:
+            The resolved NVML ``system.Device`` to monitor, or ``None`` if no
+            device could be resolved.
+        """
+        cuda_ordinal = self.thermal_device
+        try:
+            # ``None`` selects the current CUDA device and already reflects
+            # CUDA_VISIBLE_DEVICES. Mapping to system device is done by UUID.
+            if self.verbose and cuda_ordinal is None:
+                print(
+                    "[Thermovision] thermal_device not set; using current CUDA device context "
+                    "(set thermal_device to pin monitoring)."
+                )
+            cuda_device = CudaDevice(cuda_ordinal)
+            system_device = self._map_cuda_to_system_device(cuda_device)
+            if self.verbose:
+                print(
+                    f"[Thermovision] Monitoring CUDA device {self._current_cuda_device_id} "
+                    f"(NVML index {system_device.index}, {system_device.name}, UUID {system_device.uuid})"
+                )
+            return system_device
+        except Exception as e:
+            # Fall back to physical GPU 0 so thermal protection still works on
+            # single-GPU systems and when CUDA cannot be initialized here.
+            if cuda_ordinal is not None:
+                print(
+                    f"Warning: Could not resolve thermal_device={cuda_ordinal} "
+                    f"to an NVML device ({e}). Falling back to physical GPU 0."
+                )
+            self._current_cuda_device_id = None
+            try:
+                return system.Device(index=0)
+            except Exception:
+                return None
+
+    def _refresh_device_for_current_cuda_context(self) -> None:
+        """Refresh monitored NVML device when current CUDA device changes.
+
+        This applies only when ``thermal_device`` is not explicitly set. It keeps
+        Thermovision aligned with runtime CUDA context switches in user code
+        (for example via ``torch.cuda.set_device``).
+        """
+        if self.thermal_device is not None:
+            return
+
+        try:
+            cuda_device = CudaDevice(None)
+            current_cuda_id = cuda_device.device_id
+            if (
+                self.device is not None
+                and self._current_cuda_device_id == current_cuda_id
+            ):
+                return
+
+            self.device = self._map_cuda_to_system_device(cuda_device)
+            if self.verbose:
+                print(
+                    f"[Thermovision] Switched monitoring to CUDA device {self._current_cuda_device_id} "
+                    f"(NVML index {self.device.index}, {self.device.name}, UUID {self.device.uuid})"
+                )
+        except Exception:
+            # Keep existing device if refresh fails. If no device exists yet,
+            # try the regular resolution path (including fallback).
+            if self.device is None:
+                self.device = self._resolve_device()
 
     def throttle_guard(self) -> None:
         """Check thermal state and pause if GPU is too hot.
@@ -129,6 +232,7 @@ class ThermalController:
            - Many iterations (>TARGET_MAX_ITERATIONS): GPU heats slowly → decrease thermal_cont (cool less)
         4. Wait until GPU cools back to thermal_cont, then repeat
         """
+        self._refresh_device_for_current_cuda_context()
         tlimit = self._get_gpu_tlimit()
         if tlimit is None:
             return

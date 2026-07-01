@@ -50,6 +50,7 @@ def kernel(
     thermal_wait: int | None = None,
     thermal_cont: int | None = None,
     thermal_timeout: int | None = None,
+    thermal_device: int | None = None,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
@@ -79,6 +80,7 @@ def kernel(
     thermal_wait: int | None = None,
     thermal_cont: int | None = None,
     thermal_timeout: int | None = None,
+    thermal_device: int | None = None,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
@@ -220,6 +222,14 @@ def kernel(
         thermal_timeout: Maximum wait time in seconds for GPU to cool down.
             Default: 180 seconds
 
+        thermal_device: CUDA device ordinal to monitor for thermal throttling.
+
+            If set, monitor that CUDA device. If ``None``, monitor the current
+            CUDA device context. Device numbering follows CUDA runtime ordinals and
+            honors ``CUDA_VISIBLE_DEVICES``.
+
+            Default: ``None``
+
         verbosity: Controls the verbosity level of the output. Selecting level N
             enables output at all levels with value <= N. Default: ``VerbosityLevel.INFO``.
 
@@ -313,6 +323,7 @@ def kernel(
             thermal_wait=thermal_wait,
             thermal_cont=thermal_cont,
             thermal_timeout=thermal_timeout,
+            thermal_device=thermal_device,
             output_prefix=prefix,
             output_csv=output_csv,
         )
