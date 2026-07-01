@@ -144,8 +144,6 @@ def extract_df_from_report(
     }
 
     # Extract all profiling data
-    if verbosity >= VerbosityLevel.INFO:
-        print(f"Extracting profiling data")
     profiling_data: dict[str, list[utils.NCUActionData]] = {}
     for range_idx in range(report.num_ranges()):
         current_range: ncu_report.IRange = report.range_by_idx(range_idx)
@@ -172,7 +170,7 @@ def extract_df_from_report(
 
     for annotation, annotation_data in profiling_data.items():
         if verbosity >= VerbosityLevel.INFO:
-            print(f"Extracting {annotation} profiling data")
+            print(f"[NSIGHT-PYTHON] Extracting {annotation} profiling data")
 
         configs_repeated = [
             (config,) if is_scalar(config) else config
