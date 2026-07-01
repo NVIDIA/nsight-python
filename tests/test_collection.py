@@ -38,7 +38,7 @@ def test_launch_ncu_runs_with_ncu_available(mock_popen: MagicMock) -> None:
         "--process-id",
         str(target_pid),
         "--nvtx-include",
-        "regex:nsight-python@.+/",
+        "regex:nsight-python@.+",
         "--log-file",
         "report.log",
         "--cache-control",

@@ -229,7 +229,7 @@ def launch_ncu(
         "--process-id",
         str(target_pid),
         "--nvtx-include",
-        f"regex:{utils.NVTX_DOMAIN}@.+/",
+        f"regex:{utils.NVTX_DOMAIN}@.+",
         "--log-file",
         log_path,
         "--cache-control",
