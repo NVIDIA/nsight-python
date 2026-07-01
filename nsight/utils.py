@@ -43,12 +43,10 @@ class VerbosityLevel(enum.IntEnum):
     """Verbosity level for ``@nsight.analyze.kernel``.
 
     Selecting level N enables output at all levels with value <= N.
-    For example, ``INFO`` enables ERROR, WARNING, and INFO but not DEBUG.
+    For example, ``INFO`` enables INFO but not DEBUG.
     """
 
     SILENT = 0
-    ERROR = 1
-    WARNING = 2
     INFO = 3
     DEBUG = 4
 
@@ -134,10 +132,10 @@ def format_time(seconds: float) -> str:
 # Sincerely stolen (and adjusted) from attention-gym
 def print_header(*lines: str) -> None:
     width = max(80, max(len(line) for line in lines) + 4)
-    print(purple("╔" + "═" * (width - 2) + "╗"))
+    print(purple("[NSIGHT-PYTHON] ╔" + "═" * (width - 2) + "╗"))
     for line in lines:
-        print(purple(f"║ {line.center(width - 4)} ║"))
-    print(purple("╚" + "═" * (width - 2) + "╝"))
+        print(purple(f"[NSIGHT-PYTHON] ║ {line.center(width - 4)} ║"))
+    print(purple("[NSIGHT-PYTHON] ╚" + "═" * (width - 2) + "╝"))
 
 
 @dataclass
@@ -203,13 +201,13 @@ def print_progress_bar(
         sys.stdout.write("\033[1A")  # Move cursor up 1 line
         sys.stdout.write("\033[2K\r")  # Clear line
         sys.stdout.write(
-            f"Progress: [{bar}] {progress * 100:.2f}% | Estimated time remaining: {formatted_time}\n"
+            f"[NSIGHT-PYTHON] Progress: [{bar}] {progress * 100:.2f}% | Estimated time remaining: {formatted_time}\n"
         )
         sys.stdout.flush()
 
     else:
         print(
-            f"Progress: [{bar}] {progress * 100:.2f}% | Estimated time remaining: {formatted_time}"
+            f"[NSIGHT-PYTHON] Progress: [{bar}] {progress * 100:.2f}% | Estimated time remaining: {formatted_time}"
         )
 
 
@@ -235,7 +233,9 @@ def print_config(
     if overwrite_output:
         sys.stdout.write("\033[2F")  # Move cursor up two lines
         sys.stdout.write("\033[2K\r")  # Clear line
-        sys.stdout.write(f"Config {config_string}: {str(list(map(str, c)))}\n\n")
+        sys.stdout.write(
+            f"[NSIGHT-PYTHON] Config {config_string}: {str(list(map(str, c)))}\n\n"
+        )
         sys.stdout.flush()
 
     else:

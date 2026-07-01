@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import time
+import warnings
 from typing import Any, Literal
 
 from nsight.exceptions import CoolingTimeoutError
@@ -23,8 +24,8 @@ try:
     CUDA_CORE_AVAILABLE = True
 except ImportError:
     CUDA_CORE_AVAILABLE = False
-    print(
-        "Warning: Cannot import cuda.core. Ensure nsight-python was installed properly with all dependencies."
+    warnings.warn(
+        "Cannot import cuda.core. Ensure nsight-python was installed properly with all dependencies."
     )
 
 # Default thermal threshold constants
@@ -374,7 +375,5 @@ class ThermalController:
             self.device.temperature.margin
             return True
         except Exception:
-            print(
-                "Warning: Nsight Python Thermovision is not supported on this machine"
-            )
+            warnings.warn("Nsight Python Thermovision is not supported on this machine")
             return False
