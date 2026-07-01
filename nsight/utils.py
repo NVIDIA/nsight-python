@@ -233,11 +233,11 @@ def print_config(
     if overwrite_output:
         sys.stdout.write("\033[2F")  # Move cursor up two lines
         sys.stdout.write("\033[2K\r")  # Clear line
-        sys.stdout.write(f"Config {config_string}: {str(list(map(str, c)))}\n\n")
+        sys.stdout.write(f"[NSIGHT-PYTHON] Config {config_string}: {str(list(map(str, c)))}\n\n")
         sys.stdout.flush()
 
     else:
-        print_header(f"Config {config_string}: {str(list(map(str, c)))}")
+        print_header(f"[NSIGHT-PYTHON] Config {config_string}: {str(list(map(str, c)))}")
 
 
 def batched(iterable: Any, n: int) -> Iterator[tuple[Any, ...]]:
