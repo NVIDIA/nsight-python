@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import time
+import warnings
 from typing import Any, Literal
 
 from nsight.exceptions import CoolingTimeoutError
-import warnings
 
 """
 This module provides GPU thermal monitoring and throttling prevention using NVIDIA's NVML library
@@ -271,7 +271,5 @@ class ThermalController:
             self.device.temperature.margin
             return True
         except Exception:
-            warnings.warn(
-                "Nsight Python Thermovision is not supported on this machine"
-            )
+            warnings.warn("Nsight Python Thermovision is not supported on this machine")
             return False
