@@ -241,6 +241,7 @@ def run_profile_session(
     thermal_wait: int | None = None,
     thermal_cont: int | None = None,
     thermal_timeout: int | None = None,
+    thermal_device: int | None = None,
 ) -> None:
 
     if verbosity >= VerbosityLevel.INFO:
@@ -255,6 +256,7 @@ def run_profile_session(
             thermal_wait=thermal_wait,
             thermal_cont=thermal_cont,
             thermal_timeout=thermal_timeout,
+            thermal_device=thermal_device,
             verbose=verbosity >= VerbosityLevel.DEBUG,
         )
         thermovision_initialized = thermal_controller.init()
@@ -452,6 +454,16 @@ class ProfileSettings:
     """
     Maximum wait time in seconds for GPU to cool down.
     If None, uses default value (180 seconds).
+    """
+
+    thermal_device: int | None
+    """
+    CUDA device ordinal to monitor for thermal throttling.
+
+    If set, monitor that CUDA device. If None, monitor the current CUDA device
+    context.
+    Device numbering follows CUDA runtime ordinals and honors
+    ``CUDA_VISIBLE_DEVICES``.
     """
 
     output_prefix: str | None

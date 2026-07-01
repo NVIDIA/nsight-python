@@ -410,6 +410,7 @@ class NCUCollector(core.NsightCollector):
                 settings.thermal_wait,
                 settings.thermal_cont,
                 settings.thermal_timeout,
+                settings.thermal_device,
             )
         finally:
             end_profiling()
