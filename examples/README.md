@@ -44,7 +44,7 @@ pip install triton
 
 ## Quick Start
 
-The examples are numbered in order of complexity. Start with `00_minimal.py`:
+Start with `00_minimal.py`:
 
 ```bash
 cd examples
