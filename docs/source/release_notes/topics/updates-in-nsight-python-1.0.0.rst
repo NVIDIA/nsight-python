@@ -54,10 +54,6 @@ Enhancements
 API Changes
 -----------
 
-- **Consistent output prefix**: Progress bar, config, and header output
-  printed by nsight-python is now consistently prefixed with
-  ``[NSIGHT-PYTHON]``.
-
 - **Replaced** ``output`` **with** ``verbosity``: The ``output`` parameter of
   :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`, which accepted the strings
   ``"quiet"``, ``"progress"``, and ``"verbose"``, has been replaced by a
