@@ -40,6 +40,9 @@ Enhancements
   (`#37 <https://github.com/NVIDIA/nsight-python/pull/37>`_):
   Added a new example demonstrating how to profile a CUDA Tile kernel.
 
+API Changes
+-----------
+
 - **Added thermal device selection**
   (`#51 <https://github.com/NVIDIA/nsight-python/pull/51>`_, fixes
   `#35 <https://github.com/NVIDIA/nsight-python/issues/35>`_):
@@ -50,9 +53,6 @@ Enhancements
   underlying NVML device by UUID (honoring ``CUDA_VISIBLE_DEVICES``) instead
   of always monitoring physical GPU 0, and tracks CUDA context switches (for
   example via ``torch.cuda.set_device``) made during profiling.
-
-API Changes
------------
 
 - **Replaced** ``output`` **with** ``verbosity``: The ``output`` parameter of
   :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`, which accepted the strings
