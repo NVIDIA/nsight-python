@@ -129,6 +129,10 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
         Nested annotations are currently not supported. However, since each
         annotation is expected to contain a single kernel launch by default,
         nested annotations should not be necessary in typical usage scenarios.
+        Entering and exiting the annotation context pushes and pops an NVTX
+        range, so calling ``nvtx.pop_range()`` inside the annotation context
+        without a corresponding push would pop the annotation context's own
+        range instead, resulting in incorrect profiling results.
 
     """
 
