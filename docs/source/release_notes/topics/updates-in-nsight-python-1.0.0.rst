@@ -40,8 +40,23 @@ Enhancements
   (`#37 <https://github.com/NVIDIA/nsight-python/pull/37>`_):
   Added a new example demonstrating how to profile a CUDA Tile kernel.
 
+- **Added thermal device selection**
+  (`#51 <https://github.com/NVIDIA/nsight-python/pull/51>`_, fixes
+  `#35 <https://github.com/NVIDIA/nsight-python/issues/35>`_):
+  Added a ``thermal_device`` parameter to
+  :func:`@nsight.analyze.kernel <nsight.analyze.kernel>` for pinning
+  Thermovision's thermal monitoring to a specific CUDA device ordinal. If
+  unset, Thermovision now maps the current CUDA device context to its
+  underlying NVML device by UUID (honoring ``CUDA_VISIBLE_DEVICES``) instead
+  of always monitoring physical GPU 0, and tracks CUDA context switches (for
+  example via ``torch.cuda.set_device``) made during profiling.
+
 API Changes
 -----------
+
+- **Consistent output prefix**: Progress bar, config, and header output
+  printed by nsight-python is now consistently prefixed with
+  ``[NSIGHT-PYTHON]``.
 
 - **Replaced** ``output`` **with** ``verbosity``: The ``output`` parameter of
   :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`, which accepted the strings
@@ -68,3 +83,8 @@ Fixes
   Fixed crashes when aggregating profiling results for configurations containing
   dictionary- or list-valued arguments. These configuration parameters are now
   handled consistently regardless of the number of runs.
+
+- **Fixed misleading y-axis labels on non-normalized plots**
+  (`#33 <https://github.com/NVIDIA/nsight-python/pull/33>`_):
+  Plots of non-normalized data no longer show a spurious "relative to False"
+  suffix on the y-axis label.
