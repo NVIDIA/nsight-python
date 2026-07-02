@@ -130,6 +130,12 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
         annotation is expected to contain a single kernel launch by default,
         nested annotations should not be necessary in typical usage scenarios.
 
+    Note:
+        Entering and exiting the annotation context pushes and pops an NVTX
+        range. Calling ``nvtx.pop_range()`` inside the annotation context
+        without a corresponding push would pop the annotation context's own
+        range instead.
+
     """
 
     def __init__(self, name: str, ignore_failures: bool = False):
