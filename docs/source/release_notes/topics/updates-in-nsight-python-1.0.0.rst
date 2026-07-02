@@ -74,13 +74,13 @@ Fixes
   tuple-valued arguments. Tuple arguments are now preserved correctly for
   single- and multi-metric profiling.
 
+- **Fixed misleading y-axis labels on non-normalized plots**
+  (`#33 <https://github.com/NVIDIA/nsight-python/pull/33>`_):
+  Plots of non-normalized data no longer show a spurious "relative to False"
+  suffix on the y-axis label.
+
 - **Fixed crashes with unhashable config parameters**
   (`#42 <https://github.com/NVIDIA/nsight-python/pull/42>`_):
   Fixed crashes when aggregating profiling results for configurations containing
   dictionary- or list-valued arguments. These configuration parameters are now
   handled consistently regardless of the number of runs.
-
-- **Fixed misleading y-axis labels on non-normalized plots**
-  (`#33 <https://github.com/NVIDIA/nsight-python/pull/33>`_):
-  Plots of non-normalized data no longer show a spurious "relative to False"
-  suffix on the y-axis label.
