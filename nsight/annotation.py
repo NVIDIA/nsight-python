@@ -132,7 +132,7 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
         Entering and exiting the annotation context pushes and pops an NVTX
         range, so calling ``nvtx.pop_range()`` inside the annotation context
         without a corresponding push would pop the annotation context's own
-        range instead.
+        range instead, resulting in incorrect profiling results.
 
     """
 
