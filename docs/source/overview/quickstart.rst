@@ -25,7 +25,6 @@ Here's the absolute minimal example to get started with Nsight Python. Just add 
        with nsight.annotate("matmul"):
            c = a @ b
 
-       return c
 
    if __name__ == "__main__":
        # Run the benchmark
