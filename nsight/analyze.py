@@ -174,6 +174,8 @@ def kernel(
             - ``"none"``: No GPC or memory frequencies are changed during profiling.
 
             Default: ``"none"``
+
+            Refer the `NVIDIA Nsight Compute documentation on Clock Control <https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#clock-control>`_ for more details.
         cache_control: Control the behavior of the GPU caches during profiling. Allowed values:
 
             - ``"all"``: All GPU caches are flushed before each kernel replay iteration during profiling. While metric values in the execution environment of the application might be slightly different without invalidating the caches, this mode offers the most reproducible metric results across the replay passes and also across multiple runs of the target application.
