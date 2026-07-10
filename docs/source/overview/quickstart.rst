@@ -31,6 +31,11 @@ Here's the absolute minimal example to get started with Nsight Python. Just add 
        result = benchmark_matmul(1024)
        print(result.to_dataframe())
 
+The decorated function returns a :class:`~nsight.collection.core.ProfileResults`
+object. It does not return a value produced by the original function. Decorated
+benchmark functions should therefore return ``None``; keep any computation whose
+result you need in an undecorated helper. See :doc:`/analyze` for an example.
+
 That's it! Nsight Python will automatically profile your kernel and collect metrics. The ``to_dataframe()`` method returns the results as a pandas DataFrame for easy analysis.
 
 For more advanced examples including parameter sweeps, custom metrics, and visualization, check out the `examples directory on GitHub <https://github.com/NVIDIA/nsight-python/tree/main/examples>`_.
