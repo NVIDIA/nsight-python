@@ -142,7 +142,14 @@ def try_init_injection() -> None:
         check_ncu_version(ncu_path)
 
         inj_dir = get_injection_library_path(ncu_path)
-        inj_lib_path = os.path.join(inj_dir, "libcuda-injection.so")
+
+        if os.name == "posix":
+            inj_lib_path = os.path.join(inj_dir, "libcuda-injection.so")
+        elif os.name == "nt":
+            inj_lib_path = os.path.join(inj_dir, "cuda-injection.dll")
+        else:
+            raise exceptions.ProfilerException(f"Unsupported operating system: {os.name}")
+        
         if not os.path.isfile(inj_lib_path):
             raise exceptions.ProfilerException("Failed to find NCU injection library")
 
