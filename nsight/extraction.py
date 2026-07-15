@@ -161,7 +161,7 @@ def extract_df_from_report(
                 if ignore_kernel_list and action.name() in ignore_kernel_list:
                     continue
 
-                annotation: str = domain.push_pop_ranges()[0]
+                annotation: str = domain.start_end_ranges()[0]
                 data = extract_ncu_action_data(action, metrics)
 
                 if annotation not in profiling_data:

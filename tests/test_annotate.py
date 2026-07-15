@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import threading
 from typing import Any
 
 import pytest
@@ -123,6 +124,33 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
             raise_exception(a, False)
 
     annotate_decorator()
+
+
+def test_annotate_captures_kernel_from_worker_thread() -> None:
+    """Test that kernels launched from a worker thread within an annotation are captured."""
+
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=7, verbosity=nsight.VerbosityLevel.SILENT
+    )
+    def annotate_worker_thread(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+
+        def launch_kernel() -> None:
+            _ = a + b
+            torch.cuda.synchronize()
+
+        with nsight.annotate("worker_thread"):
+            worker = threading.Thread(target=launch_kernel)
+            worker.start()
+            worker.join()
+
+    result = annotate_worker_thread()
+    df = result.to_dataframe()
+
+    # The kernel launched from the worker thread must appear in the results;
+    # if it were not captured, extraction would have raised instead.
+    assert "worker_thread" in df["Annotation"].values
 
 
 # ============================================================================

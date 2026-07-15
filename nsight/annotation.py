@@ -88,7 +88,7 @@ def is_active_annotation(name: str) -> bool:
     return False
 
 
-class annotate(nvtx.annotate):  # type: ignore[misc]
+class annotate:
     """
     A decorator/context-manager hybrid for marking profiling regions.
     The encapsulated code will be profiled and associated with an NVTX
@@ -129,10 +129,10 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
         Nested annotations are currently not supported. However, since each
         annotation is expected to contain a single kernel launch by default,
         nested annotations should not be necessary in typical usage scenarios.
-        Entering and exiting the annotation context pushes and pops an NVTX
-        range, so calling ``nvtx.pop_range()`` inside the annotation context
-        without a corresponding push would pop the annotation context's own
-        range instead, resulting in incorrect profiling results.
+        Entering and exiting the annotation context starts and ends an NVTX
+        range that is visible across all threads in the profiled process, so
+        kernels launched from worker threads within the annotated region are
+        also captured.
 
     """
 
@@ -144,9 +144,7 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
         if ignore_failures and not utils.CUDA_CORE_AVAILABLE:
             raise ImportError(CUDA_CORE_UNAVAILABLE_MSG)
 
-        super().__init__(name, domain=utils.NVTX_DOMAIN)
-
-    def __enter__(self) -> nvtx.annotate:
+    def __enter__(self) -> "annotate":
 
         # Check for nested annotations
         if _is_in_annotation():
@@ -164,14 +162,15 @@ class annotate(nvtx.annotate):  # type: ignore[misc]
 
         add_active_annotation(self.name)
         _set_in_annotation(True)
-        return super().__enter__()
+        self._range_id = nvtx.start_range(message=self.name, domain=utils.NVTX_DOMAIN)
+        return self
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
         try:
             if exc_type and self.ignore_failures:
                 utils.launch_dummy_kernel_module()
         finally:
-            super().__exit__(exc_type, exc_value, traceback)
+            nvtx.end_range(self._range_id)
             _set_in_annotation(False)
 
         if exc_type and not self.ignore_failures:
