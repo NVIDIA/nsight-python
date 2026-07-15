@@ -11,6 +11,34 @@ nsight.analyze
    The decorator returns a :class:`~nsight.collection.core.ProfileResults` object containing the collected metrics.
    See :doc:`/collection/core` for full API documentation.
 
+.. warning::
+   Decorating a function with ``@nsight.analyze.kernel`` changes its return value.
+   Any value returned by the original function is ignored, and calling the
+   decorated function returns a :class:`~nsight.collection.core.ProfileResults`
+   object instead. If the original function returns a non-``None`` value,
+   Nsight Python emits a ``RuntimeWarning``.
+
+   If you also need the computational result, keep that computation in an
+   undecorated helper and use a decorated wrapper only for profiling. The
+   decorated wrapper should not return the helper's result:
+
+   .. code-block:: python
+
+      import torch
+
+      import nsight
+
+      def compute(n):
+          return torch.ones(n, device="cuda")
+
+      @nsight.analyze.kernel
+      def profile_compute(n):
+          with nsight.annotate("compute"):
+              compute(n)
+
+      output = compute(1024)
+      profile_results = profile_compute(1024)
+
 .. autoclass:: nsight.analyze.kernel
 
 .. autoclass:: nsight.analyze.plot

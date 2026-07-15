@@ -106,6 +106,14 @@ def kernel(
         - ``**kwargs``: Original function keyword arguments
         - Returns ``ProfileResults`` object containing profiling data
 
+    .. warning::
+        Decorating a function changes its return value. Any value returned by the
+        original function is ignored, and calling the decorated function returns a
+        ``ProfileResults`` object instead. If the original function returns a
+        non-``None`` value, Nsight Python emits a ``RuntimeWarning``. Keep any
+        computation whose result you need in an undecorated helper and use the
+        decorated function only as a profiling wrapper.
+
     .. note::
         Configs are passed to the decorated function as positional arguments.
         Both positional and keyword-only parameters are supported in the function
