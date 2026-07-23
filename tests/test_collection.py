@@ -14,8 +14,11 @@ def func_name(x: int, y: int, z: int) -> None:
     pass
 
 
+@patch("shutil.which", return_value="resolved-ncu")
 @patch("subprocess.Popen")
-def test_launch_ncu_runs_with_ncu_available(mock_popen: MagicMock) -> None:
+def test_launch_ncu_runs_with_ncu_available(
+    mock_popen: MagicMock, mock_which: MagicMock
+) -> None:
     mock_popen.return_value = MagicMock()
 
     target_pid = os.getpid()
@@ -32,7 +35,7 @@ def test_launch_ncu_runs_with_ncu_available(mock_popen: MagicMock) -> None:
     assert mock_popen.call_count == 1
     cmd = mock_popen.call_args_list[0].args[0]
     assert cmd == [
-        "ncu",
+        "resolved-ncu",
         "--mode",
         "attach",
         "--process-id",
