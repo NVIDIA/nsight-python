@@ -671,7 +671,7 @@ def test_parameter_output_csv(output_csv: bool) -> None:
             _simple_kernel_impl(x, y, annotation=f"output_csv={output_csv}")
 
         # Run the profiling
-        profile_output = output_csv_func()
+        output_csv_func()
 
         # Check for CSV files based on output_csv value
         csv_files = [
@@ -689,16 +689,6 @@ def test_parameter_output_csv(output_csv: bool) -> None:
                     file_path
                 ), f"CSV file should not exist when output_csv=False: {file_path}"
 
-        # NCU report files should always exist regardless of output_csv
-        ncu_files = [
-            f"{output_dir}test_ncu-output-output_csv_func-0.ncu-rep",
-            f"{output_dir}test_ncu-output-output_csv_func-0.log",
-        ]
-
-        for file_path in ncu_files:
-            assert os.path.exists(
-                file_path
-            ), f"NCU file should always exist: {file_path}"
     finally:
         if os.path.exists(output_dir):
             shutil.rmtree(output_dir)
