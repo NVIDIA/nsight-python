@@ -114,7 +114,7 @@ def get_injection_library_path(ncu_path: str) -> str:
 
 def load_library(path: str) -> ctypes.CDLL:
     """Load the injection shared library."""
-    if os.name != "posix":
+    if os.name not in ("posix", "nt"):
         raise exceptions.ProfilerException(f"Unsupported operating system: {os.name}")
     try:
         return ctypes.CDLL(path)
@@ -142,7 +142,16 @@ def try_init_injection() -> None:
         check_ncu_version(ncu_path)
 
         inj_dir = get_injection_library_path(ncu_path)
-        inj_lib_path = os.path.join(inj_dir, "libcuda-injection.so")
+
+        if os.name == "posix":
+            inj_lib_path = os.path.join(inj_dir, "libcuda-injection.so")
+        elif os.name == "nt":
+            inj_lib_path = os.path.join(inj_dir, "cuda-injection.dll")
+        else:
+            raise exceptions.ProfilerException(
+                f"Unsupported operating system: {os.name}"
+            )
+
         if not os.path.isfile(inj_lib_path):
             raise exceptions.ProfilerException("Failed to find NCU injection library")
 
@@ -219,11 +228,16 @@ def launch_ncu(
 
     log_path = os.path.splitext(report_path)[0] + ".log"
 
+    # Resolve the full path to the executable. On Windows, CreateProcess does
+    # not reliably resolve a bare "ncu" against PATH (it needs "ncu.exe"), so we
+    # resolve it explicitly here. Falls back to the bare name if not found.
+    ncu_exe = shutil.which("ncu") or "ncu"
+
     # Ensures ncu attaches to the correct process when multiple attachable processes exist
     target_pid = os.getpid()
 
     ncu_cmd = [
-        "ncu",
+        ncu_exe,
         "--mode",
         "attach",
         "--process-id",
