@@ -10,7 +10,6 @@ import torch
 
 import nsight
 from nsight import collection
-from nsight.thermovision import CUDA_CORE_AVAILABLE
 
 # ============================================================================
 # Thermovision integration tests
@@ -349,9 +348,6 @@ def test_fixed_mode_no_adaptation() -> None:
     ), f"Fixed mode should not adapt, but got {controller.thermal_cont}"
 
 
-@pytest.mark.skipif(  # type: ignore[untyped-decorator]
-    not CUDA_CORE_AVAILABLE, reason="cuda.core required for real device access"
-)
 def test_get_gpu_temp_real_device() -> None:
     """Test that _get_gpu_temp reads an actual temperature from the GPU device."""
     from nsight.thermovision import ThermalController

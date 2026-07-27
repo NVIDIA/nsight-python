@@ -5,6 +5,9 @@ import time
 import warnings
 from typing import Any, Literal
 
+from cuda.core import Device as CudaDevice
+from cuda.core import system
+
 from nsight.exceptions import CoolingTimeoutError
 
 """
@@ -15,18 +18,6 @@ It monitors GPU temperature and T.limit, and delays execution when the GPU
 is too hot to avoid thermal throttling. The module uses an adaptive approach that
 learns optimal cooling thresholds based on workload characteristics.
 """
-
-# Guard NVML imports
-try:
-    from cuda.core import Device as CudaDevice
-    from cuda.core import system
-
-    CUDA_CORE_AVAILABLE = True
-except ImportError:
-    CUDA_CORE_AVAILABLE = False
-    warnings.warn(
-        "Cannot import cuda.core. Ensure nsight-python was installed properly with all dependencies."
-    )
 
 # Default thermal threshold constants
 DEFAULT_THERMAL_WAIT: int = 10  # Default wait threshold (trigger cooling)
@@ -117,9 +108,6 @@ class ThermalController:
         Returns:
             True if temperature retrieval is supported, False otherwise.
         """
-        if not CUDA_CORE_AVAILABLE:
-            return False
-
         if self.device is None:
             resolved_device = self._resolve_device()
             if resolved_device is None:
