@@ -76,7 +76,7 @@ jobs:
       - name: "Install PyTorch (CUDA 13.2)"
         shell: pwsh
         run: |
-          pip3 install torch --index-url https://download.pytorch.org/whl/cu132
+          pip install torch --index-url https://download.pytorch.org/whl/cu132
       - name: "Running Tests"
         shell: pwsh
         run: |
