@@ -66,6 +66,9 @@ jobs:
     runs-on: windows-amd64-gpu-a100-latest-1
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
         shell: pwsh
         run: |
