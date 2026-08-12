@@ -97,16 +97,16 @@ def aggregate_data(
                 )(col),
             )
 
-    # Group keys must be hashable (pandas factorizes them) and sortable
-    # (groupby sorts them). Keys that are neither — e.g. dict- or list-valued
-    # config parameters — are grouped on a temporary stringified key, and the
-    # original objects are recovered with a "first" aggregation so the output
-    # preserves them (a dict stays a dict instead of becoming its repr).
-    def _is_groupable(series: pd.Series) -> bool:
+    # Group keys must be hashable because pandas factorizes them. Sorting is
+    # disabled below because valid hashable objects, such as multi-element
+    # tensors, may not define a scalar ordering. Unhashable keys, such as dict-
+    # or list-valued config parameters, are grouped on a temporary stringified
+    # key. The original objects are recovered with a "first" aggregation so the
+    # output preserves them (a dict stays a dict instead of becoming its repr).
+    def _is_hashable(series: pd.Series) -> bool:
         non_null = series.dropna()
         try:
             set(non_null)
-            sorted(non_null)
         except (TypeError, ValueError):
             return False
         return True
@@ -115,7 +115,7 @@ def aggregate_data(
     group_keys: list[str] = []
     func_field_keys: list[str] = []
     for col in groupby_columns + func_fields:
-        if _is_groupable(df[col]):
+        if _is_hashable(df[col]):
             key = col
         else:
             key = f"{col}__sortkey__"
@@ -131,7 +131,7 @@ def aggregate_data(
     df["Value"] = pd.to_numeric(df["Value"])
 
     # Apply aggregation with named aggregation
-    groupby_df = df.groupby(group_keys, dropna=False)
+    groupby_df = df.groupby(group_keys, dropna=False, sort=False)
     agg_df = groupby_df.agg(**named_aggs).reset_index()
 
     # Compute 95% confidence intervals
