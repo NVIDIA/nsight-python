@@ -78,9 +78,25 @@ def aggregate_data(
         if col not in [*groupby_columns, "Value", "_original_order", *func_fields]
     ]
 
+    # Get config-scope and annotation-scope columns that should be aggregated (marked by extraction)
+    config_scope_columns = df.attrs.get("config_scope_columns", [])
+    annotation_scope_columns = df.attrs.get("annotation_scope_columns", [])
+
+    # Kernel can vary within a group due to a CUTLASS4 name suffix; use "first".
     for col in remaining_fields:
         if col == "Kernel":
             named_aggs[col] = (col, "first")
+        elif col in config_scope_columns or col in annotation_scope_columns:
+            # Config-scope and annotation-scope collectors vary across runs, so aggregate them
+            # But only use numeric aggregations if the data is actually numeric
+            if pd.api.types.is_numeric_dtype(df[col]):
+                named_aggs[f"{col}_Avg"] = (col, "mean")
+                named_aggs[f"{col}_Std"] = (col, "std")
+                named_aggs[f"{col}_Min"] = (col, "min")
+                named_aggs[f"{col}_Max"] = (col, "max")
+            else:
+                # For non-numeric data, just take the first value
+                named_aggs[col] = (col, "first")
         else:
             named_aggs[col] = (  # type: ignore[assignment]
                 col,

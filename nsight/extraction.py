@@ -86,6 +86,10 @@ def extract_df_from_report(
     ignore_kernel_list: List[str] | None,
     verbosity: VerbosityLevel,
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
+    info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
+    config_scope_columns: List[str] | None = None,
+    annotation_scope_columns: List[str] | None = None,
+    info_prefix: str | None = None,
 ) -> pd.DataFrame:
     """
     Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
@@ -99,7 +103,7 @@ def extract_df_from_report(
         derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
-        verbose: Toggles the printing of extraction progress.
+        verbosity: Controls display of extraction progress.
 
     Returns:
         A DataFrame containing the extracted and transformed performance data.
@@ -142,6 +146,50 @@ def extract_df_from_report(
         if p.kind
         not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     }
+
+    # Load collected info from the pickle file if it exists
+    collected_info_per_run = []
+    custom_info_names = set()
+    if info_collectors_list:
+        import os
+
+        # Use the explicitly-provided prefix when available so the read path
+        # matches the collection-session write path exactly.
+        # Fall back to reconstructing from the report directory for direct callers.
+        if info_prefix is None:
+            report_dir = os.path.dirname(report_path)
+            info_prefix = os.path.join(report_dir, "") if report_dir else ""
+
+        # Column names come from the collector metadata (authoritative), not from
+        # the first run's collected data. Deriving from run 0 dropped any
+        # annotation-scope collector whose annotation was not entered on run 0.
+        custom_info_names = {name for name, _callback, _scope in info_collectors_list}
+
+        info_file = f"{info_prefix}collected_info.pkl"
+        if os.path.exists(info_file):
+            import pickle
+
+            with open(info_file, "rb") as f:
+                collected_info_per_run = pickle.load(f)
+            if not isinstance(collected_info_per_run, list):
+                warnings.warn(
+                    f"Collected info file {info_file} is malformed "
+                    f"(expected a list, got {type(collected_info_per_run).__name__}); "
+                    "ignoring custom info.",
+                    category=RuntimeWarning,
+                    stacklevel=2,
+                )
+                collected_info_per_run = []
+            elif verbosity >= VerbosityLevel.INFO:
+                print(f"[NSIGHT-PYTHON] Loaded collected info from {info_file}")
+        else:
+            if verbosity >= VerbosityLevel.INFO:
+                print(
+                    f"[NSIGHT-PYTHON] Warning: No collected info file found at {info_file}"
+                )
+
+    # Create arrays for custom info collectors
+    custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
 
     # Extract all profiling data
     profiling_data: dict[str, list[utils.NCUActionData]] = {}
@@ -218,7 +266,9 @@ def extract_df_from_report(
                 )
             )
 
-        for conf, data in zip(configs_repeated, action_data):
+        for idx, (conf, data) in enumerate(
+            zip(configs_repeated, action_data, strict=True)
+        ):
             compute_clocks.append(data.compute_clock)
             memory_clocks.append(data.memory_clock)
             gpus.append(data.gpu)
@@ -311,6 +361,44 @@ def extract_df_from_report(
                     continue
                 arg_arrays[name].append(next(config_iter))
 
+            # Add custom collected information
+            if (
+                collected_info_per_run
+                and idx < len(collected_info_per_run)
+                and isinstance(collected_info_per_run[idx], dict)
+            ):
+                run_info = collected_info_per_run[idx]
+                # Add once info. Guard against pickle keys that are not in the
+                # metadata-derived custom_info_names (e.g. a stale collected_info
+                # .pkl written by a different set of collectors); such keys have
+                # no column and are ignored rather than raising KeyError.
+                for name, value in run_info.get("once_info", {}).items():
+                    if name in custom_info_arrays:
+                        custom_info_arrays[name].append(value)
+                # Add config info
+                for name, value in run_info.get("config_info", {}).items():
+                    if name in custom_info_arrays:
+                        custom_info_arrays[name].append(value)
+                # Add annotation info - match by annotation name
+                annotation_info_list = run_info.get("annotation_info", [])
+                annotation_data_for_this = {}
+                for ann_data in annotation_info_list:
+                    if ann_data.get("annotation") == annotation:
+                        annotation_data_for_this = ann_data.get("data", {})
+                        break
+                for name in custom_info_names:
+                    if name in annotation_data_for_this:
+                        custom_info_arrays[name].append(annotation_data_for_this[name])
+                    elif name not in run_info.get(
+                        "once_info", {}
+                    ) and name not in run_info.get("config_info", {}):
+                        # This is an annotation-scope collector that wasn't collected for this annotation
+                        custom_info_arrays[name].append(None)
+            else:
+                # No collected info available for this run, append None
+                for name in custom_info_names:
+                    custom_info_arrays[name].append(None)
+
     # Create the DataFrame with the initial columns
     df_data = {
         "Annotation": annotations,
@@ -324,7 +412,12 @@ def extract_df_from_report(
         "Unit": units,
     }
 
-    # Add each array in arg_arrays to the DataFrame
+    # Add custom info collector data BEFORE function parameters
+    # This is important because transformation.py expects function params to be the LAST columns
+    for collector_name, collector_values in custom_info_arrays.items():
+        df_data[collector_name] = collector_values
+
+    # Add each array in arg_arrays to the DataFrame (function parameters LAST)
     for arg_name, arg_values in arg_arrays.items():
         df_data[arg_name] = arg_values
 
@@ -349,6 +442,15 @@ def extract_df_from_report(
             "Unit": all_transformed_values_units,
         }
 
+        # Custom-info columns must be added BEFORE the function-parameter columns
+        # (mirroring df_data above) so transformation.py still treats the function
+        # params as the LAST columns. Without this, derived-metric rows would get
+        # NaN/None for every collector column after the pd.concat below. The
+        # arrays are populated once per base row in the same loop, so they align
+        # row-for-row with the transformed rows.
+        for collector_name, collector_values in custom_info_arrays.items():
+            transformed_df_data[collector_name] = collector_values
+
         for arg_name, arg_values in arg_arrays.items():
             transformed_df_data[arg_name] = arg_values
 
@@ -360,5 +462,11 @@ def extract_df_from_report(
 
         # Concat the two dataframes
         df = pd.concat([df, transformed_df], ignore_index=True)
+
+    # Mark config-scope and annotation-scope columns for aggregation during transformation
+    if config_scope_columns:
+        df.attrs["config_scope_columns"] = config_scope_columns
+    if annotation_scope_columns:
+        df.attrs["annotation_scope_columns"] = annotation_scope_columns
 
     return df
