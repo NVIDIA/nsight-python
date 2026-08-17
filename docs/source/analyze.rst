@@ -44,3 +44,20 @@ nsight.analyze
 .. autoclass:: nsight.analyze.plot
 
 .. autoclass:: nsight.analyze.ignore_failures
+
+Experimental information collectors
+-----------------------------------
+
+Custom information collectors add application-specific columns to profiling
+results. The API is experimental and may change without a compatibility
+guarantee. Use the ``scope`` parameter to select whether a collector runs once
+per profiling session, once per configuration, once per repeated run, or once
+per annotation.
+
+.. autofunction:: nsight.experimental.collect
+
+.. autoclass:: nsight.CollectionScope
+   :no-undoc-members:
+
+.. autoclass:: nsight.InfoCollector
+   :no-undoc-members:

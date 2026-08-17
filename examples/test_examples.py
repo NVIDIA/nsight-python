@@ -70,3 +70,10 @@ def test_11_output_csv() -> None:
 def test_12_cutile() -> None:
     cutile = importlib.import_module("examples.12_cutile")
     cutile.main()
+
+
+def test_13_custom_info_collectors() -> None:
+    custom_info_collectors = importlib.import_module(
+        "examples.13_custom_info_collectors"
+    )
+    custom_info_collectors.main()

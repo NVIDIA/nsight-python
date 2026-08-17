@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 
 import nsight.collection as collection
 import nsight.visualization as visualization
+from nsight.info_collector import CollectionScope, InfoCollector
 from nsight.utils import VerbosityLevel
 
 
@@ -54,6 +55,14 @@ def kernel(
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
+    info_collectors: (
+        Sequence[
+            InfoCollector
+            | tuple[str, Callable[..., Any], str | CollectionScope]
+            | Callable[..., Any]
+        ]
+        | None
+    ) = None,
 ) -> Callable[[Callable[..., None]], Callable[..., collection.core.ProfileResults]]: ...
 
 
@@ -84,6 +93,14 @@ def kernel(
     combine_kernel_metrics: Callable[[float, float], float] | None = None,
     output_prefix: str | None = None,
     output_csv: bool = False,
+    info_collectors: (
+        Sequence[
+            InfoCollector
+            | tuple[str, Callable[..., Any], str | CollectionScope]
+            | Callable[..., Any]
+        ]
+        | None
+    ) = None,
 ) -> (
     Callable[..., collection.core.ProfileResults]
     | Callable[[Callable[..., None]], Callable[..., collection.core.ProfileResults]]
@@ -299,6 +316,50 @@ def kernel(
                 - ``Host``: Host machine name
                 - ``ComputeClock``: GPU compute clock frequency
                 - ``MemoryClock``: GPU memory clock frequency
+        info_collectors: Optional list of custom information collectors.
+            Collectors should be functions decorated with
+            ``@nsight.experimental.collect(scope=...)``.
+            The function name will be used as the column name in the DataFrame.
+
+            **Decorated functions** (recommended)::
+
+                @nsight.experimental.collect(scope=nsight.CollectionScope.ONCE)
+                def driver_version():
+                    from cuda.core import system
+                    return ".".join(
+                        str(part) for part in system.get_user_mode_driver_version()
+                    )
+
+                @nsight.experimental.collect(scope=nsight.CollectionScope.CONFIG)
+                def matrix_elements(n, dtype):
+                    return n * n
+
+                @nsight.experimental.collect(scope=nsight.CollectionScope.RUN)
+                def gpu_temp_c(n, dtype):
+                    return get_gpu_temperature()
+
+                @nsight.experimental.collect(
+                    scope=nsight.CollectionScope.ANNOTATION
+                )
+                def ann_timestamp(annotation_name, *config_args):
+                    return time.time()
+
+                @nsight.analyze.kernel(
+                    info_collectors=[
+                        driver_version, matrix_elements, gpu_temp_c, ann_timestamp
+                    ]
+                )
+                def my_benchmark(n, dtype):
+                    ...
+
+            Collectors may also be supplied as ``(name, callback, scope)``
+            tuples, where ``scope`` is ``"once"``, ``"config"``, ``"run"``,
+            or ``"annotation"`` (or a :class:`nsight.CollectionScope`).
+
+            Column naming: ``once``-scope and non-numeric collectors produce a
+            single column named after the function. Numeric ``config``/``run``/
+            ``annotation``-scope collectors are aggregated across runs into four
+            columns ``<name>_Avg``, ``<name>_Std``, ``<name>_Min``, ``<name>_Max``.
     """
     # Strip whitespace
     metrics = [m.strip() for m in metrics]
@@ -319,9 +380,71 @@ def kernel(
         prefix = output_prefix
         if prefix is None:
             prefix = tempfile.mkdtemp(prefix="nspy_")
-            prefix = os.path.join(prefix, "")  # Adds a trailing forward/backward slash
+            prefix = os.path.join(prefix, "")  # Adds a trailing path separator
         else:
             os.makedirs(os.path.dirname(prefix) or ".", exist_ok=True)
+
+        # Normalize info_collectors: convert decorated functions to
+        # (name, callback, scope) tuples with a canonical string scope.
+        valid_scopes = {s.value for s in CollectionScope}
+
+        def _canonical_scope(scope: Any, label: str) -> str:
+            if isinstance(scope, CollectionScope):
+                return scope.value
+            if isinstance(scope, str) and scope in valid_scopes:
+                return scope
+            raise ValueError(
+                f"Invalid scope {scope!r} for collector {label}. "
+                f"Expected one of {sorted(valid_scopes)} or a CollectionScope."
+            )
+
+        normalized_collectors = None
+        if info_collectors:
+            normalized_collectors = []
+            for collector in info_collectors:
+                if isinstance(collector, InfoCollector):
+                    # An InfoCollector instance (the exported public class).
+                    normalized_collectors.append(
+                        (
+                            collector.name,
+                            collector.callback,
+                            _canonical_scope(collector.scope, repr(collector.name)),
+                        )
+                    )
+                elif isinstance(collector, tuple):
+                    # Raw tuple format: (name, callback, scope)
+                    if len(collector) != 3:
+                        raise ValueError(
+                            "Tuple-format info collector must be "
+                            f"(name, callback, scope); got {collector!r}."
+                        )
+                    name, callback, scope = collector
+                    if not isinstance(name, str) or not callable(callback):
+                        raise TypeError(
+                            "Tuple-format info collector must be "
+                            f"(str name, callable callback, scope); got {collector!r}."
+                        )
+                    normalized_collectors.append(
+                        (name, callback, _canonical_scope(scope, repr(name)))
+                    )
+                elif callable(collector):
+                    # Decorated function: extract metadata
+                    if hasattr(collector, "_nsight_collector_scope"):
+                        name = getattr(collector, "_nsight_collector_name")
+                        scope = getattr(collector, "_nsight_collector_scope")
+                        normalized_collectors.append(
+                            (name, collector, _canonical_scope(scope, repr(name)))
+                        )
+                    else:
+                        raise ValueError(
+                            f"Collector function {collector.__name__} is missing "
+                            "@nsight.experimental.collect(scope=...) decorator"
+                        )
+                else:
+                    raise TypeError(
+                        f"Invalid collector type: {type(collector)}. "
+                        "Expected tuple (name, callback, scope) or decorated function."
+                    )
 
         settings = collection.core.ProfileSettings(
             configs=configs,
@@ -336,6 +459,7 @@ def kernel(
             thermal_device=thermal_device,
             output_prefix=prefix,
             output_csv=output_csv,
+            info_collectors=normalized_collectors,
         )
         ncu = collection.ncu.NCUCollector(
             metrics=metrics,

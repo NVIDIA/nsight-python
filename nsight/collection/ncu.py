@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from nsight import exceptions, extraction, utils
+from nsight import exceptions, extraction, info_collector, utils
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
 from nsight.utils import VerbosityLevel
@@ -425,9 +425,15 @@ class NCUCollector(core.NsightCollector):
                 settings.thermal_cont,
                 settings.thermal_timeout,
                 settings.thermal_device,
+                settings.info_collectors,
+                settings.output_prefix,
             )
         finally:
-            end_profiling()
+            try:
+                end_profiling()
+            finally:
+                info_collector.set_annotation_collectors([], ())
+                info_collector.clear_annotation_data()
 
         return_code = ncu_process.wait()
         if return_code != 0:
@@ -450,6 +456,17 @@ class NCUCollector(core.NsightCollector):
                 f"[NSIGHT-PYTHON] Refer to {log_path} for the NVIDIA Nsight Compute CLI logs"
             )
 
+        # Numeric values collected per configuration, run, or annotation vary
+        # across raw rows and are aggregated alongside profiling metrics.
+        config_scope_columns = []
+        annotation_scope_columns = []
+        if settings.info_collectors:
+            for name, _callback, scope in settings.info_collectors:
+                if scope in ("config", "run"):
+                    config_scope_columns.append(name)
+                elif scope == "annotation":
+                    annotation_scope_columns.append(name)
+
         df = extraction.extract_df_from_report(
             report_path,
             self.metrics,
@@ -460,6 +477,10 @@ class NCUCollector(core.NsightCollector):
             self.ignore_kernel_list,  # type: ignore[arg-type]
             settings.verbosity,
             self.combine_kernel_metrics,
+            settings.info_collectors,
+            config_scope_columns,
+            annotation_scope_columns,
+            info_prefix=settings.output_prefix or "",
         )
 
         return df
