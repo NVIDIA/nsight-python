@@ -34,7 +34,7 @@ jobs:
           pip install hatch
           hatch run docs:build
 
-  test:
+  test-linux:
     name: test (${{ matrix.platform.runner }})
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -57,6 +57,31 @@ jobs:
           rm ncu_installer.run
           echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
       - name: "Running Tests"
+        run: |
+          pip install hatch
+          hatch run test_cu13:run
+
+  test-windows:
+    name: test (windows-amd64-gpu-a100-latest-1)
+    runs-on: windows-amd64-gpu-a100-latest-1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-windows-x86_64-2026.2.1.6.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
+          Remove-Item ncu_installer.msi
+          "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.2.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: "Install PyTorch (CUDA 13.2)"
+        shell: pwsh
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cu132
+      - name: "Running Tests"
+        shell: pwsh
         run: |
           pip install hatch
           hatch run test_cu13:run
