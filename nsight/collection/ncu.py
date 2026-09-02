@@ -124,21 +124,25 @@ def load_library(path: str) -> ctypes.CDLL:
         ) from exc
 
 
-def try_init_injection() -> None:
-    """Load the injection library callables, or set ``injection_load_error`` on failure."""
-    global injection_load_error
+def init_injection() -> None:
+    """Load the injection library callables, raising if that is not possible.
+
+    Raises:
+        exceptions.NCUNotAvailableError: If the ``ncu`` CLI is not on ``$PATH``.
+        exceptions.ProfilerException: If the injection library is too old, or
+            cannot be found or loaded.
+    """
     global begin_profiling_symbol
     global end_profiling_symbol
 
-    ncu_path = shutil.which("ncu")
-    if ncu_path is None:
-        injection_load_error = exceptions.NCUNotAvailableError(
-            "Nsight Compute CLI (ncu) is not available on this system. Profiling will not be performed.\n"
-            "Please install Nsight Compute CLI."
-        )
-        return
-
     try:
+        ncu_path = shutil.which("ncu")
+        if ncu_path is None:
+            raise exceptions.NCUNotAvailableError(
+                "Nsight Compute CLI (ncu) is not available on this system. Profiling will not be performed.\n"
+                "Please install Nsight Compute CLI."
+            )
+
         check_ncu_version(ncu_path)
 
         inj_dir = get_injection_library_path(ncu_path)
@@ -169,19 +173,13 @@ def try_init_injection() -> None:
                 f"need {BEGIN_SYMBOL!r} and {STOP_SYMBOL!r}"
             )
 
-    except exceptions.ProfilerException as exc:
-        injection_load_error = exc
-        return
+    except (exceptions.ProfilerException, exceptions.NCUNotAvailableError):
+        raise
 
     except Exception as exc:
-        injection_load_error = exceptions.ProfilerException(
+        raise exceptions.ProfilerException(
             "Failed to load NCU injection library"
-        )
-        injection_load_error.__cause__ = exc
-        injection_load_error.__suppress_context__ = True
-        return
-
-    injection_load_error = None
+        ) from exc
 
 
 def launch_ncu(
@@ -210,8 +208,8 @@ def launch_ncu(
 
     Note:
         The attach command uses the ``ncu`` name on ``$PATH`` (no resolved full path).
-        Whether NCU is usable is determined in :func:`try_init_injection` at import;
-        ``NCUCollector.collect`` raises if the CLI was not found.
+        Whether NCU is usable is determined in :func:`init_injection` when the tool
+        is activated; ``NCUCollector.collect`` raises if the CLI was not found.
 
     Returns:
         path to the NVIDIA Nsight Compute log file
@@ -361,8 +359,8 @@ class NCUCollector(core.NsightCollector):
 
         Raises:
             exceptions.NCUNotAvailableError:
-                Nsight Compute was not found on ``$PATH`` during import-time initialization
-                (see :func:`try_init_injection`).
+                Nsight Compute was not found on ``$PATH`` when the tool was activated
+                (see :func:`init_injection`).
             exceptions.ProfilerException:
                 Injection could not be loaded or NVTX injection failed around the
                 profiled region; the ``ncu`` attach process exited with an error; the
@@ -387,8 +385,20 @@ class NCUCollector(core.NsightCollector):
             caller unchanged.
         """
 
+        # Only set when the default NSPY_NCU_INIT_AT_IMPORT=1 activation failed
+        # during `import nsight`, which records the error rather than raising so
+        # that importing stays safe. This is where it finally surfaces.
         if injection_load_error is not None:
             raise injection_load_error
+
+        # Deferred import: nsight.tools_manager imports this module, so it
+        # cannot be imported at module level here.
+        from nsight.tools_manager import Tool, activate, get_active_tool
+
+        # Nothing is active under NSPY_NCU_INIT_AT_IMPORT=0, so load the
+        # injection now. Raises if the load fails.
+        if get_active_tool() is None:
+            activate(Tool.NCU)
 
         # Materialize the configs
         configs_list = list(configs)
