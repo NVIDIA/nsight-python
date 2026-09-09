@@ -88,6 +88,10 @@ jobs:
         shell: pwsh
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cu132
+      - name: "Install cuTile"
+        shell: pwsh
+        run: |
+          pip install cuda-tile[tileiras]
       - name: "Verify torch loads"
         shell: pwsh
         run: |
