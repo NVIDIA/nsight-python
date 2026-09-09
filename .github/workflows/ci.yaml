@@ -76,10 +76,23 @@ jobs:
           Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
           Remove-Item ncu_installer.msi
           "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.2.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: "Install MSVC Redistributable (required by torch c10.dll)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+          $p = Start-Process vc_redist.x64.exe -Wait -PassThru -ArgumentList '/install','/quiet','/norestart'
+          # 0 = installed, 1638 = newer version already present, 3010 = success, reboot pending
+          if ($p.ExitCode -notin 0, 1638, 3010) { throw "vc_redist failed: $($p.ExitCode)" }
+          Remove-Item vc_redist.x64.exe
       - name: "Install PyTorch (CUDA 13.2)"
         shell: pwsh
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cu132
+      - name: "Verify torch loads"
+        shell: pwsh
+        run: |
+          python -c "import ctypes; ctypes.CDLL('msvcp140.dll'); print('msvcp140 ok')"
+          python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
       - name: "Running Tests"
         shell: pwsh
         run: |
