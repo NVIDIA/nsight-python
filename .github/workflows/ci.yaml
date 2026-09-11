@@ -76,7 +76,7 @@ jobs:
           Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
           Remove-Item ncu_installer.msi
           "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.2.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: "Install MSVC Redistributable (required by torch c10.dll)"
+      - name: "Install MSVC Redistributable (required by torch)"
         shell: pwsh
         run: |
           curl.exe -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
@@ -96,8 +96,10 @@ jobs:
       - name: "Running Tests"
         shell: pwsh
         env:
-          # Headless runner with an incomplete Tcl/Tk tree: matplotlib would
-          # select TkAgg and fail. Nothing here needs an interactive backend.
+          # On Windows matplotlib defaults to the TkAgg backend, and tkinter
+          # is not properly configured on the runner. This is a headless
+          # runner and no GUI is required, so force the non-interactive
+          # backend. Headless Linux falls back to Agg already.
           MPLBACKEND: Agg
         run: |
           pip install hatch
