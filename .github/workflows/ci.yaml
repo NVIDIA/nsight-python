@@ -101,6 +101,11 @@ jobs:
           # runner and no GUI is required, so force the non-interactive
           # backend. Headless Linux falls back to Agg already.
           MPLBACKEND: Agg
+          # pytest arms faulthandler only for the duration of the session and
+          # removes it again in pytest_unconfigure, so a native crash during
+          # interpreter shutdown leaves no trace. Arm it from interpreter
+          # startup instead. Costs nothing unless the process actually faults.
+          PYTHONFAULTHANDLER: 1
         run: |
           pip install hatch
           hatch run test_cu13:run
