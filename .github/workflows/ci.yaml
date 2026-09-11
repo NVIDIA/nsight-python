@@ -97,6 +97,8 @@ jobs:
         run: |
           python -c "import ctypes; ctypes.CDLL('msvcp140.dll'); print('msvcp140 ok')"
           python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+          pip install hatch
+          hatch run test_cu13:python -c "import nvidia.cu13 as p; print(list(p.__path__))"
       - name: "Running Tests"
         shell: pwsh
         run: |
