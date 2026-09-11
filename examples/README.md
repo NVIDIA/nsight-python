@@ -116,3 +116,9 @@ This will profile a simple matrix multiplication and generate a plot showing the
 
 - **`12_cutile.py`** - Profiling a cuTile kernel
   - Comparing against PyTorch kernel for different problem sizes
+
+- **`13_custom_info_collectors.py`** - Custom information collectors
+  - Using `@nsight.experimental.collect(scope=...)`
+  - Collecting information once, per configuration, per run, or per annotation
+  - Understanding collection scopes and aggregation behavior
+  - Tracking execution order and system state during profiling

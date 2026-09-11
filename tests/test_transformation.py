@@ -6,6 +6,7 @@
 from typing import Any
 
 import pandas as pd
+import torch
 
 from nsight import transformation
 from nsight.utils import VerbosityLevel
@@ -89,3 +90,30 @@ def test_numeric_config_keeps_native_dtype() -> None:
     )
     assert result["config"].iloc[0] == 128
     assert pd.api.types.is_integer_dtype(result["config"])
+
+
+def test_multi_element_tensor_config_does_not_crash() -> None:
+    # Multi-element tensor comparisons do not produce a scalar boolean, so
+    # pandas must group them without sorting the configuration values.
+    config = torch.arange(4).reshape(2, 2)
+    result = transformation.aggregate_data(
+        _raw_df([config, config]), _one_arg, None, VerbosityLevel.SILENT
+    )
+    assert len(result) == 1
+    assert result["config"].iloc[0] is config
+    assert result["NumRuns"].iloc[0] == 2
+
+
+def test_distinct_multi_element_tensor_configs_stay_distinct() -> None:
+    config1 = torch.zeros((2, 2))
+    config2 = torch.ones((2, 2))
+    result = transformation.aggregate_data(
+        _raw_df([config1, config1, config2, config2]),
+        _one_arg,
+        None,
+        VerbosityLevel.SILENT,
+    )
+    assert len(result) == 2
+    assert result["config"].iloc[0] is config1
+    assert result["config"].iloc[1] is config2
+    assert result["NumRuns"].tolist() == [2, 2]

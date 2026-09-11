@@ -7,17 +7,20 @@ import functools
 import importlib.util
 import inspect
 import os
+import pickle
 import threading
 import time
 import warnings
 from collections.abc import Callable, Collection, Iterable, Sequence
-from typing import Any, List, Literal, Mapping
+from typing import Any, Literal, Mapping
 
 import numpy as np
 import pandas as pd
 
 from nsight import annotation, exceptions, thermovision, transformation, utils
 from nsight.utils import VerbosityLevel
+
+NormalizedInfoCollector = tuple[str, Callable[..., Any], str]
 
 
 def _get_regular_params(
@@ -232,9 +235,115 @@ def _sanitize_configs(
     return configs  # type: ignore[return-value]
 
 
+def _picklable_or_none(value: Any) -> Any:
+    """Return ``value`` if it can be pickled, otherwise None."""
+    try:
+        pickle.dumps(value)
+        return value
+    except Exception:
+        return None
+
+
+def _sanitize_for_pickle(runs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Replace any non-picklable collected value with None, preserving structure.
+
+    Used as a fallback when serializing the full collected-info list fails
+    because a collector returned something unserializable (a CUDA stream, file
+    handle, lambda, ...). Degrading the offending value to None keeps the rest of
+    the run's data instead of losing everything.
+    """
+    sanitized: list[dict[str, Any]] = []
+    for run in runs:
+        new = dict(run)
+        new["config"] = _picklable_or_none(run.get("config"))
+        new["once_info"] = {
+            k: _picklable_or_none(v) for k, v in run.get("once_info", {}).items()
+        }
+        new["config_info"] = {
+            k: _picklable_or_none(v) for k, v in run.get("config_info", {}).items()
+        }
+        annotation_info = []
+        for entry in run.get("annotation_info", []):
+            new_entry = dict(entry)
+            new_entry["config"] = _picklable_or_none(entry.get("config"))
+            new_entry["data"] = {
+                k: _picklable_or_none(v) for k, v in entry.get("data", {}).items()
+            }
+            annotation_info.append(new_entry)
+        new["annotation_info"] = annotation_info
+        sanitized.append(new)
+    return sanitized
+
+
+def _serialize_collected_info(
+    runs: Sequence[Mapping[str, Any]],
+) -> tuple[bytes, bool] | None:
+    """Serialize collected info, replacing only non-picklable values.
+
+    Serialization is completed in memory before opening the output file. This
+    keeps collector-value failures separate from filesystem failures such as a
+    full disk or an unwritable output directory.
+
+    Returns:
+        The serialized payload and whether sanitization was required, or
+        ``None`` when the sanitized data still cannot be serialized.
+    """
+    try:
+        return pickle.dumps(runs), False
+    except Exception as exc:
+        sanitized = _sanitize_for_pickle(runs)
+        try:
+            payload = pickle.dumps(sanitized)
+        except Exception as fallback_exc:
+            warnings.warn(
+                "Failed to serialize custom info after replacing non-picklable "
+                f"values ({type(fallback_exc).__name__}: {fallback_exc}).",
+                category=RuntimeWarning,
+                stacklevel=2,
+            )
+            return None
+
+        warnings.warn(
+            f"Some collected info was not picklable ({type(exc).__name__}: {exc}); "
+            "non-picklable collector values have been replaced with None.",
+            category=RuntimeWarning,
+            stacklevel=2,
+        )
+        return payload, True
+
+
+def _save_collected_info(
+    info_file: str,
+    runs: Sequence[Mapping[str, Any]],
+    verbosity: VerbosityLevel,
+) -> bool:
+    """Serialize and save collected info without conflating failure causes."""
+    serialized = _serialize_collected_info(runs)
+    if serialized is None:
+        return False
+
+    payload, sanitized = serialized
+    try:
+        with open(info_file, "wb") as output_file:
+            output_file.write(payload)
+    except OSError as exc:
+        warnings.warn(
+            f"Failed to save custom info to {info_file} "
+            f"({type(exc).__name__}: {exc}).",
+            category=RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+
+    if verbosity >= VerbosityLevel.INFO:
+        suffix = " (sanitized)" if sanitized else ""
+        print(f"[NSIGHT-PYTHON] Saved collected info{suffix} to {info_file}")
+    return True
+
+
 def run_profile_session(
     func: Callable[..., None],
-    configs: List[Sequence[Any]],
+    configs: list[Sequence[Any]],
     runs: int,
     verbosity: VerbosityLevel,
     thermal_mode: Literal["auto", "manual", "off"],
@@ -242,11 +351,15 @@ def run_profile_session(
     thermal_cont: int | None = None,
     thermal_timeout: int | None = None,
     thermal_device: int | None = None,
+    info_collectors_list: list[NormalizedInfoCollector] | None = None,
+    output_prefix: str | None = None,
 ) -> None:
 
     if verbosity >= VerbosityLevel.INFO:
         print("")
         print("")
+
+    output_detailed = verbosity >= VerbosityLevel.DEBUG
 
     # Initialize thermal controller if needed (unless mode is "off")
     thermal_controller = None
@@ -277,6 +390,57 @@ def run_profile_session(
     show_return_type_warning = False
     config_lengths: list[int] = list()
 
+    # Parse info collectors
+    from nsight import info_collector
+
+    info_collector.reset_collector_failure_warnings()
+
+    once_collectors = []
+    config_collectors = []
+    run_collectors = []
+    annotation_collectors = []
+    if info_collectors_list:
+        for name, callback, scope in info_collectors_list:
+            try:
+                scope_enum = info_collector.CollectionScope(scope)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid scope '{scope}' for collector '{name}'. Must be "
+                    "'once', 'config', 'run', or 'annotation'."
+                ) from exc
+
+            collector_obj = info_collector.InfoCollector(
+                name=name, callback=callback, scope=scope_enum
+            )
+            if scope_enum == info_collector.CollectionScope.ONCE:
+                once_collectors.append(collector_obj)
+            elif scope_enum == info_collector.CollectionScope.CONFIG:
+                config_collectors.append(collector_obj)
+            elif scope_enum == info_collector.CollectionScope.RUN:
+                run_collectors.append(collector_obj)
+            else:  # ANNOTATION scope
+                annotation_collectors.append(collector_obj)
+
+    # Collect "once" scope information before any configs
+    once_info = {}
+    for collector in once_collectors:
+        try:
+            once_info[collector.name] = collector.collect()
+            if output_detailed:
+                print(
+                    f"[NSIGHT-PYTHON] Collected {collector.name}: {once_info[collector.name]}"
+                )
+        except Exception as e:
+            once_info[collector.name] = None
+            info_collector.warn_collector_failure(collector.name, "once", e)
+            if output_detailed:
+                print(
+                    f"[NSIGHT-PYTHON] Warning: Failed to collect '{collector.name}': {e}"
+                )
+
+    # Store collected info for each run
+    collected_info_per_run = []
+
     for c in configs:
         sig = inspect.signature(func)
         required_count, total_count = _count_params(sig)
@@ -305,6 +469,29 @@ def run_profile_session(
         if verbosity >= VerbosityLevel.INFO:
             utils.print_config(total_configs, curr_config, c, overwrite_output)
 
+        # Collect configuration information once, then repeat it for each run
+        # belonging to this configuration when constructing the raw rows.
+        config_info = {}
+        for collector in config_collectors:
+            try:
+                collector_args = info_collector.bind_args_to_signature(
+                    collector.callback, (), c
+                )
+                config_info[collector.name] = collector.collect(*collector_args)
+                if output_detailed:
+                    print(
+                        f"[NSIGHT-PYTHON] Collected {collector.name}: "
+                        f"{config_info[collector.name]}"
+                    )
+            except Exception as e:
+                config_info[collector.name] = None
+                info_collector.warn_collector_failure(collector.name, "config", e)
+                if output_detailed:
+                    print(
+                        f"[NSIGHT-PYTHON] Warning: Failed to collect "
+                        f"'{collector.name}' for config {c}: {e}"
+                    )
+
         for i in range(runs):
             start_time = time.time()
             curr_run += 1
@@ -314,12 +501,55 @@ def run_profile_session(
             # Clear active annotations before each run
             annotation.clear_active_annotations()
 
+            # Collect information that can change between repeated runs.
+            run_collected_info = {}
+            for collector in run_collectors:
+                try:
+                    collector_args = info_collector.bind_args_to_signature(
+                        collector.callback, (), c
+                    )
+                    run_collected_info[collector.name] = collector.collect(
+                        *collector_args
+                    )
+                    if output_detailed:
+                        print(
+                            f"[NSIGHT-PYTHON] Collected {collector.name}: "
+                            f"{run_collected_info[collector.name]}"
+                        )
+                except Exception as e:
+                    run_collected_info[collector.name] = None
+                    info_collector.warn_collector_failure(collector.name, "run", e)
+                    if output_detailed:
+                        print(
+                            f"[NSIGHT-PYTHON] Warning: Failed to collect "
+                            f"'{collector.name}' for run {i} of config {c}: {e}"
+                        )
+
+            # Set up annotation collectors for this run
+            info_collector.set_annotation_collectors(
+                annotation_collectors, tuple(c), output_detailed
+            )
+            info_collector.clear_annotation_data()
+
             # Run the function with the config, splitting into positional
             # and keyword-only args based on the function signature
             pos_args, kw_args = _bind_config_to_signature(sig, c)
             result = func(*pos_args, **kw_args)  # type: ignore[func-returns-value]
             if result is not None:
                 show_return_type_warning = True
+
+            # Collect annotation-scope data after the run
+            annotation_data = info_collector.get_collected_annotation_data()
+
+            # Store collected info for this run
+            run_info = {
+                "config": c,
+                "run_idx": i,
+                "once_info": once_info,
+                "config_info": {**config_info, **run_collected_info},
+                "annotation_info": annotation_data,  # List of per-annotation data
+            }
+            collected_info_per_run.append(run_info)
 
             elapsed_time = time.time() - start_time
             if curr_run > 1:
@@ -340,6 +570,10 @@ def run_profile_session(
                     )
                 progress_time = time.time()
 
+    # Do not leak collectors into annotations entered after profiling completes.
+    info_collector.set_annotation_collectors([], ())
+    info_collector.clear_annotation_data()
+
     # Update progress bar at end so it shows 100%
     if verbosity >= VerbosityLevel.INFO:
         utils.print_progress_bar(
@@ -359,6 +593,11 @@ def run_profile_session(
             category=RuntimeWarning,
             stacklevel=external_stacklevel,
         )
+
+    # Save collected info to a file if we have collectors
+    if info_collectors_list and output_prefix:
+        info_file = f"{output_prefix}collected_info.pkl"
+        _save_collected_info(info_file, collected_info_per_run, verbosity)
 
 
 @dataclasses.dataclass
@@ -476,6 +715,18 @@ class ProfileSettings:
     Controls whether to output raw and processed profiling data to CSV files
     """
 
+    info_collectors: list[NormalizedInfoCollector] | None
+    """
+    List of custom information collectors (normalized format).
+    Each is a tuple of (name, callback, scope) where:
+    - name: str - column name in DataFrame
+    - callback: Callable - function to collect the information
+    - scope: str - "once", "config", "run", or "annotation"
+
+    Note: This is the internal normalized format. Users pass decorated functions
+    or tuples to @nsight.analyze.kernel, which are normalized here.
+    """
+
 
 class ProfileResults:
     """
@@ -577,6 +828,13 @@ class NsightProfiler:
         self, func: Callable[..., None]
     ) -> Callable[..., ProfileResults | None]:
         func._nspy_ncu_run_id = 0  # type: ignore[attr-defined]
+
+        # Fail fast (before starting the profiling session) on collector names
+        # that would silently clobber profiler columns or function-arg columns.
+        if self.settings.info_collectors:
+            from nsight import info_collector
+
+            info_collector.validate_collectors(self.settings.info_collectors, func)
 
         @functools.wraps(func)
         def wrapper(

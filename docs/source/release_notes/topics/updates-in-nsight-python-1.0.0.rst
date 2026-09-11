@@ -7,6 +7,14 @@ Updates in Nsight Python 1.0.0
 Enhancements
 ------------
 
+- **Added experimental custom information collectors**: Profiling results can
+  now include application-specific information collected once per session,
+  once per configuration, once per repeated run, or once per annotation. Use
+  :func:`nsight.experimental.collect` with a
+  :class:`~nsight.info_collector.CollectionScope` and pass the decorated
+  functions through the ``info_collectors`` parameter of
+  :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`.
+
 - **Eliminated per-decorator Python script relaunch**: Previously, nsight-python
   relaunched the entire Python script once for each :func:`@nsight.analyze.kernel <nsight.analyze.kernel>` decorated
   function in order to collect profiles using NVIDIA Nsight Compute. nsight-python now
