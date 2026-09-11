@@ -34,7 +34,7 @@ jobs:
           pip install hatch
           hatch run docs:build
 
-  test:
+  test-linux:
     name: test (${{ matrix.platform.runner }})
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -57,6 +57,55 @@ jobs:
           rm ncu_installer.run
           echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
       - name: "Running Tests"
+        run: |
+          pip install hatch
+          hatch run test_cu13:run
+
+  test-windows:
+    name: test (windows-amd64-gpu-a100-latest-1)
+    runs-on: windows-amd64-gpu-a100-latest-1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-windows-x86_64-2026.2.1.6.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
+          Remove-Item ncu_installer.msi
+          "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.2.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: "Install MSVC Redistributable (required by torch)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+          $p = Start-Process vc_redist.x64.exe -Wait -PassThru -ArgumentList '/install','/quiet','/norestart'
+          # 0 = installed, 1638 = newer version already present, 3010 = success, reboot pending
+          if ($p.ExitCode -notin 0, 1638, 3010) { throw "vc_redist failed: $($p.ExitCode)" }
+          Remove-Item vc_redist.x64.exe
+      - name: "Install PyTorch (CUDA 13.2)"
+        shell: pwsh
+        run: |
+          pip install hatch
+          hatch run test_cu13:pip install torch --index-url https://download.pytorch.org/whl/cu132
+      - name: "Install cuTile"
+        shell: pwsh
+        run: |
+          hatch run test_cu13:pip install cuda-tile[tileiras]
+      - name: "Running Tests"
+        shell: pwsh
+        env:
+          # On Windows matplotlib defaults to the TkAgg backend, and tkinter
+          # is not properly configured on the runner. This is a headless
+          # runner and no GUI is required, so force the non-interactive
+          # backend. Headless Linux falls back to Agg already.
+          MPLBACKEND: Agg
+          # pytest arms faulthandler only for the duration of the session and
+          # removes it again in pytest_unconfigure, so a native crash during
+          # interpreter shutdown leaves no trace. Arm it from interpreter
+          # startup instead. Costs nothing unless the process actually faults.
+          PYTHONFAULTHANDLER: 1
         run: |
           pip install hatch
           hatch run test_cu13:run
