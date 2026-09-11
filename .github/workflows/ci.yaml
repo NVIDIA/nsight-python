@@ -87,18 +87,19 @@ jobs:
       - name: "Install PyTorch (CUDA 13.2)"
         shell: pwsh
         run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cu132
+          pip install hatch
+          hatch run test_cu13:pip install torch --index-url https://download.pytorch.org/whl/cu132
       - name: "Install cuTile"
         shell: pwsh
         run: |
-          pip install cuda-tile[tileiras]
-      - name: "Verify torch loads"
+          hatch run test_cu13:pip install cuda-tile[tileiras]
+      - name: "Verify environment"
         shell: pwsh
         run: |
-          python -c "import ctypes; ctypes.CDLL('msvcp140.dll'); print('msvcp140 ok')"
-          python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
-          pip install hatch
+          hatch run test_cu13:python -c "import ctypes; ctypes.CDLL('msvcp140.dll'); print('msvcp140 ok')"
+          hatch run test_cu13:python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
           hatch run test_cu13:python -c "import nvidia.cu13 as p; print(list(p.__path__))"
+          hatch run test_cu13:python -c "from cuda.tile import _compile; print(_compile._find_compiler_bin().path)"
       - name: "Running Tests"
         shell: pwsh
         run: |
