@@ -56,10 +56,6 @@ jobs:
           ./ncu_installer.run -- -noprompt
           rm ncu_installer.run
           echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
-      - name: "DEBUG: matplotlib backend (throwaway)"
-        run: |
-          pip install hatch
-          hatch run test_cu13:python -c "import matplotlib; print('backend =', matplotlib.get_backend())"
       - name: "Running Tests"
         run: |
           pip install hatch
@@ -97,17 +93,6 @@ jobs:
         shell: pwsh
         run: |
           hatch run test_cu13:pip install cuda-tile[tileiras]
-      - name: "Verify environment"
-        shell: pwsh
-        run: |
-          hatch run test_cu13:python -c "import ctypes; ctypes.CDLL('msvcp140.dll'); print('msvcp140 ok')"
-          hatch run test_cu13:python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
-          hatch run test_cu13:python -c "import nvidia.cu13 as p; print(list(p.__path__))"
-          hatch run test_cu13:python -c "from cuda.tile import _compile; print(_compile._find_compiler_bin().path)"
-      - name: "DEBUG: matplotlib backend (throwaway)"
-        shell: pwsh
-        run: |
-          hatch run test_cu13:python -c "import matplotlib; print('backend =', matplotlib.get_backend())"
       - name: "Running Tests"
         shell: pwsh
         env:
