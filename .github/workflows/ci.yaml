@@ -108,4 +108,13 @@ jobs:
         run: |
           pip install -e ".[cu13]"
           pip install pytest pytest-cov
-          python -m pytest -v --junitxml=report.xml
+          python -m pytest -v -rA --debug=pytestdebug.log --junitxml=report.xml
+          # Capture pytest's own exit code before anything else runs, so the
+          # step still reports it after printing the debug log.
+          $code = $LASTEXITCODE
+          Write-Host "=== pytest exit code: $code ==="
+          if (Test-Path pytestdebug.log) {
+            Write-Host "=== pytestdebug.log ==="
+            Get-Content pytestdebug.log
+          }
+          exit $code
