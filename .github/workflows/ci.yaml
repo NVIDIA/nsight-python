@@ -92,6 +92,30 @@ jobs:
         shell: pwsh
         run: |
           pip install cuda-tile[tileiras]
+      - name: "Install project"
+        shell: pwsh
+        run: |
+          pip install -e ".[cu13]"
+          pip install pytest pytest-cov
+      - name: "Bisect the shutdown abort"
+        shell: pwsh
+        run: |
+          # Every probe below may abort; keep going and report each exit code.
+          # 0xC0000409 (-1073740791) is the abort() we are hunting.
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          # Control: does loading the libraries alone reproduce it?
+          python -c "import torch, ncu_report, nsight"
+          Write-Host "=== exit $LASTEXITCODE  |  imports only, no tests"
+          # Then one test file at a time, each in its own process.
+          foreach ($f in Get-ChildItem -Path tests\test_*.py, examples\test_*.py) {
+            $rel = Resolve-Path -Relative $f.FullName
+            python -m pytest $rel -q
+            Write-Host "=== exit $LASTEXITCODE  |  $rel"
+          }
+          exit 0
       - name: "Running Tests"
         shell: pwsh
         env:
@@ -106,8 +130,6 @@ jobs:
           # startup instead. Costs nothing unless the process actually faults.
           PYTHONFAULTHANDLER: 1
         run: |
-          pip install -e ".[cu13]"
-          pip install pytest pytest-cov
           python -m pytest -v -rA --debug=pytestdebug.log --junitxml=report.xml
           # Capture pytest's own exit code before anything else runs, so the
           # step still reports it after printing the debug log.
