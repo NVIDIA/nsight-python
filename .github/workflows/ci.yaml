@@ -87,12 +87,11 @@ jobs:
       - name: "Install PyTorch (CUDA 13.2)"
         shell: pwsh
         run: |
-          pip install hatch
-          hatch run test_cu13:pip install torch --index-url https://download.pytorch.org/whl/cu132
+          pip install torch --index-url https://download.pytorch.org/whl/cu132
       - name: "Install cuTile"
         shell: pwsh
         run: |
-          hatch run test_cu13:pip install cuda-tile[tileiras]
+          pip install cuda-tile[tileiras]
       - name: "Running Tests"
         shell: pwsh
         env:
@@ -107,5 +106,6 @@ jobs:
           # startup instead. Costs nothing unless the process actually faults.
           PYTHONFAULTHANDLER: 1
         run: |
-          pip install hatch
-          hatch run test_cu13:run
+          pip install -e ".[cu13]"
+          pip install pytest pytest-cov
+          python -m pytest -v --junitxml=report.xml
