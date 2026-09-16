@@ -116,6 +116,49 @@ jobs:
             Write-Host "=== exit $LASTEXITCODE  |  $rel"
           }
           exit 0
+      - name: "Minimal repro outside pytest"
+        shell: pwsh
+        run: |
+          # Smallest program that reproduces the shutdown abort: one profiled
+          # torch kernel, no pytest, no test suite.
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $control = @(
+            'import torch',
+            'a = torch.randn(1024, 1024, device="cuda")',
+            'b = a @ a',
+            'print("control done", b.sum().item())'
+          )
+          Set-Content -Path repro_control.py -Value $control
+          $repro = @(
+            'import torch',
+            '',
+            'import nsight',
+            '',
+            '',
+            '@nsight.analyze.kernel',
+            'def benchmark_matmul(n: int) -> None:',
+            '    a = torch.randn(n, n, device="cuda")',
+            '    b = torch.randn(n, n, device="cuda")',
+            '    with nsight.annotate("matmul"):',
+            '        _ = a @ b',
+            '',
+            '',
+            'if __name__ == "__main__":',
+            '    benchmark_matmul(1024)',
+            '    print("repro done")'
+          )
+          Set-Content -Path repro_nsight.py -Value $repro
+          Get-Content repro_nsight.py
+          # Control: same torch workload, unprofiled.
+          python repro_control.py
+          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, no profiling"
+          # The repro: one profiled kernel.
+          python repro_nsight.py
+          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, nsight.analyze.kernel"
+          exit 0
       - name: "Running Tests"
         shell: pwsh
         env:
