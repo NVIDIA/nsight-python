@@ -118,3 +118,11 @@ jobs:
             Get-Content pytestdebug.log
           }
           exit $code
+      - name: "Show crash details"
+        if: always()
+        shell: pwsh
+        run: |
+          # Windows logs an Application Error for a fail-fast termination,
+          # recording which module was executing when the process died.
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000,1001} -MaxEvents 10 -ErrorAction SilentlyContinue |
+            Format-List TimeCreated, Id, Message
