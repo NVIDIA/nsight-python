@@ -116,6 +116,19 @@ jobs:
             Write-Host "=== exit $LASTEXITCODE  |  $rel"
           }
           exit 0
+      - name: "Enable crash dumps"
+        shell: pwsh
+        run: |
+          # Scoped to python.exe: the NVIDIA display container also crashes on
+          # this runner and would otherwise fill the folder.
+          $k = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\python.exe"
+          New-Item -Path $k -Force | Out-Null
+          Set-ItemProperty -Path $k -Name DumpFolder -Value "C:\dumps" -Type ExpandString
+          Set-ItemProperty -Path $k -Name DumpCount  -Value 5 -Type DWord
+          Set-ItemProperty -Path $k -Name DumpType   -Value 1 -Type DWord
+          New-Item -ItemType Directory -Force -Path C:\dumps | Out-Null
+          # Self-hosted runner: drop dumps left over from earlier runs.
+          Remove-Item C:\dumps\* -Force -ErrorAction SilentlyContinue
       - name: "Minimal repro outside pytest"
         shell: pwsh
         run: |
@@ -183,6 +196,16 @@ jobs:
             Get-Content pytestdebug.log
           }
           exit $code
+      - name: "List crash dumps"
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem C:\dumps -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-crash-dumps
+          path: C:\dumps\*.dmp
+          if-no-files-found: warn
       - name: "Show crash details"
         if: always()
         shell: pwsh
