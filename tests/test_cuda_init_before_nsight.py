@@ -11,20 +11,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import torch
 
-torch.cuda.init()  # There can be any other torch call that initializes CUDA before nsight is imported
 
-import nsight
+def main() -> None:
 
+    torch.cuda.init()  # any torch call that initializes CUDA would do
+    import nsight  # this loads NCU, and the test needs it loaded after CUDA init
 
-@nsight.analyze.kernel()
-def run_simple_kernel(n: int) -> None:
-    a = torch.randn(n, n, device="cuda")
-    b = torch.randn(n, n, device="cuda")
-    with nsight.annotate("test"):
-        _ = a @ b
+    @nsight.analyze.kernel()
+    def run_simple_kernel(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+        with nsight.annotate("test"):
+            _ = a @ b
+
+    # under NSPY_NCU_INIT_AT_IMPORT=0 the load is deferred to here instead, still after CUDA init
+    run_simple_kernel(64)
 
 
 def test() -> None:
@@ -53,4 +56,4 @@ def test() -> None:
 
 
 if __name__ == "__main__":
-    run_simple_kernel(64)
+    main()
