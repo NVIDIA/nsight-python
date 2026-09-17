@@ -34,7 +34,7 @@ jobs:
           pip install hatch
           hatch run docs:build
 
-  test:
+  test-linux:
     name: test (${{ matrix.platform.runner }})
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -60,3 +60,157 @@ jobs:
         run: |
           pip install hatch
           hatch run test_cu13:run
+
+  test-windows:
+    name: test (windows-amd64-gpu-a100-latest-1)
+    runs-on: windows-amd64-gpu-a100-latest-1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-windows-x86_64-2026.2.1.6.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
+          Remove-Item ncu_installer.msi
+          "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.2.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: "Install MSVC Redistributable (required by torch)"
+        shell: pwsh
+        run: |
+          curl.exe -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+          $p = Start-Process vc_redist.x64.exe -Wait -PassThru -ArgumentList '/install','/quiet','/norestart'
+          # 0 = installed, 1638 = newer version already present, 3010 = success, reboot pending
+          if ($p.ExitCode -notin 0, 1638, 3010) { throw "vc_redist failed: $($p.ExitCode)" }
+          Remove-Item vc_redist.x64.exe
+      - name: "Install PyTorch (CUDA 13.2)"
+        shell: pwsh
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cu132
+      - name: "Install cuTile"
+        shell: pwsh
+        run: |
+          pip install cuda-tile[tileiras]
+      - name: "Install project"
+        shell: pwsh
+        run: |
+          pip install -e ".[cu13]"
+          pip install pytest pytest-cov
+      - name: "Bisect the shutdown abort"
+        shell: pwsh
+        run: |
+          # Every probe below may abort; keep going and report each exit code.
+          # 0xC0000409 (-1073740791) is the abort() we are hunting.
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          # Control: does loading the libraries alone reproduce it?
+          python -c "import torch, ncu_report, nsight"
+          Write-Host "=== exit $LASTEXITCODE  |  imports only, no tests"
+          # Then one test file at a time, each in its own process.
+          foreach ($f in Get-ChildItem -Path tests\test_*.py, examples\test_*.py) {
+            $rel = Resolve-Path -Relative $f.FullName
+            python -m pytest $rel -q
+            Write-Host "=== exit $LASTEXITCODE  |  $rel"
+          }
+          exit 0
+      - name: "Enable crash dumps"
+        shell: pwsh
+        run: |
+          # Scoped to python.exe: the NVIDIA display container also crashes on
+          # this runner and would otherwise fill the folder.
+          $k = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\python.exe"
+          New-Item -Path $k -Force | Out-Null
+          Set-ItemProperty -Path $k -Name DumpFolder -Value "C:\dumps" -Type ExpandString
+          Set-ItemProperty -Path $k -Name DumpCount  -Value 5 -Type DWord
+          Set-ItemProperty -Path $k -Name DumpType   -Value 1 -Type DWord
+          New-Item -ItemType Directory -Force -Path C:\dumps | Out-Null
+          # Self-hosted runner: drop dumps left over from earlier runs.
+          Remove-Item C:\dumps\* -Force -ErrorAction SilentlyContinue
+      - name: "Minimal repro outside pytest"
+        shell: pwsh
+        run: |
+          # Smallest program that reproduces the shutdown abort: one profiled
+          # torch kernel, no pytest, no test suite.
+          $ErrorActionPreference = 'Continue'
+          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+          $control = @(
+            'import torch',
+            'a = torch.randn(1024, 1024, device="cuda")',
+            'b = a @ a',
+            'print("control done", b.sum().item())'
+          )
+          Set-Content -Path repro_control.py -Value $control
+          $repro = @(
+            'import torch',
+            '',
+            'import nsight',
+            '',
+            '',
+            '@nsight.analyze.kernel',
+            'def benchmark_matmul(n: int) -> None:',
+            '    a = torch.randn(n, n, device="cuda")',
+            '    b = torch.randn(n, n, device="cuda")',
+            '    with nsight.annotate("matmul"):',
+            '        _ = a @ b',
+            '',
+            '',
+            'if __name__ == "__main__":',
+            '    benchmark_matmul(1024)',
+            '    print("repro done")'
+          )
+          Set-Content -Path repro_nsight.py -Value $repro
+          Get-Content repro_nsight.py
+          # Control: same torch workload, unprofiled.
+          python repro_control.py
+          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, no profiling"
+          # The repro: one profiled kernel.
+          python repro_nsight.py
+          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, nsight.analyze.kernel"
+          exit 0
+      - name: "Running Tests"
+        shell: pwsh
+        env:
+          # On Windows matplotlib defaults to the TkAgg backend, and tkinter
+          # is not properly configured on the runner. This is a headless
+          # runner and no GUI is required, so force the non-interactive
+          # backend. Headless Linux falls back to Agg already.
+          MPLBACKEND: Agg
+          # pytest arms faulthandler only for the duration of the session and
+          # removes it again in pytest_unconfigure, so a native crash during
+          # interpreter shutdown leaves no trace. Arm it from interpreter
+          # startup instead. Costs nothing unless the process actually faults.
+          PYTHONFAULTHANDLER: 1
+        run: |
+          python -m pytest -v -rA --debug=pytestdebug.log --junitxml=report.xml
+          # Capture pytest's own exit code before anything else runs, so the
+          # step still reports it after printing the debug log.
+          $code = $LASTEXITCODE
+          Write-Host "=== pytest exit code: $code ==="
+          if (Test-Path pytestdebug.log) {
+            Write-Host "=== pytestdebug.log ==="
+            Get-Content pytestdebug.log
+          }
+          exit $code
+      - name: "List crash dumps"
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem C:\dumps -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-crash-dumps
+          path: C:\dumps\*.dmp
+          if-no-files-found: warn
+      - name: "Show crash details"
+        if: always()
+        shell: pwsh
+        run: |
+          # Windows logs an Application Error for a fail-fast termination,
+          # recording which module was executing when the process died.
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000,1001} -MaxEvents 10 -ErrorAction SilentlyContinue |
+            Format-List TimeCreated, Id, Message
