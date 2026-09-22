@@ -403,7 +403,7 @@ class NCUCollector(core.NsightCollector):
         # Materialize the configs
         configs_list = list(configs)
 
-        tag = f"{func.__name__}-{func._nspy_ncu_run_id}"  # type: ignore[attr-defined]
+        tag = f"{func.__name__}-{func._nspy_run_id}"  # type: ignore[attr-defined]
         report_path = f"{settings.output_prefix}ncu-output-{tag}.ncu-rep"
 
         begin_profiling()

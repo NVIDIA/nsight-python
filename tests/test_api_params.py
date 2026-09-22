@@ -13,6 +13,11 @@ import torch
 
 import nsight
 
+_skip_cupti = pytest.mark.skipif(
+    nsight.get_active_tool() == nsight.Tool.CUPTI,
+    reason="not supported by cupti",
+)
+
 # powers of two, 1k - 4k
 sizes = [(2**i,) for i in range(10, 13)]
 
@@ -132,6 +137,7 @@ def create_benchmark(
 # =============================================================================
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 @pytest.mark.parametrize(
     "scenario_name",
     [
@@ -189,6 +195,7 @@ def test_config_validation_errors(scenario_name: str) -> None:
     ), f"Expected error message to contain: '{expected_msg}'\nActual error: '{error_msg}'"
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 @pytest.mark.parametrize(
     "scenario_name",
     [

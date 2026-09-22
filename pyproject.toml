@@ -40,6 +40,7 @@ classifiers = [
 [project.optional-dependencies]
 cu12 = ["cuda-core[cu12]"]
 cu13 = ["cuda-core[cu13]"]
+cupti = ["cupti-python>=13.4.0"]
 
 [project.urls]
 Repository = "https://github.com/NVIDIA/nsight-python"
@@ -116,5 +117,5 @@ features = ["cu12"]
 template = "test"
 
 [tool.hatch.envs.test_cu13]
-features = ["cu13"]
+features = ["cu13", "cupti"]
 template = "test"

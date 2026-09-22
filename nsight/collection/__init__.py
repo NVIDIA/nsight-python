@@ -4,7 +4,8 @@
 import functools
 
 import nsight.collection.core as core
+import nsight.collection.cupti as cupti
 import nsight.collection.ncu as ncu
 import nsight.utils as utils
 
-__all__ = ["ncu", "core"]
+__all__ = ["ncu", "cupti", "core"]

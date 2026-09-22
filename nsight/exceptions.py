@@ -64,6 +64,8 @@ class CoolingTimeoutError(ThermalControlError):
 
 CUDA_CORE_UNAVAILABLE_MSG = "cuda-core is required for ignore_failures functionality.\n Install it with:\n  - pip install nsight-python[cu12]  (if you have CUDA 12.x)\n  - pip install nsight-python[cu13]  (if you have CUDA 13.x)"
 
+CUPTI_UNAVAILABLE_MSG = "cupti-python is required for cupti tool functionality.\n Install it with:\n  - pip install nsight-python[cupti]"
+
 
 def get_metrics_error_message(
     metrics: Sequence[str], error_type: MetricErrorType
