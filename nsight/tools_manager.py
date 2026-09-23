@@ -4,13 +4,14 @@
 import enum
 import warnings
 
-from nsight.collection import ncu
+from nsight.collection import cupti, ncu
 
 
 class Tool(str, enum.Enum):
     """The profiling/analysis tools Nsight Python supports."""
 
     NCU = "ncu"
+    CUPTI = "cupti"
 
 
 _active_tool: Tool | None = None
@@ -58,6 +59,8 @@ def activate(tool: Tool) -> None:
         )
     if tool == Tool.NCU:
         ncu.init_injection()
+    elif tool == Tool.CUPTI:
+        cupti.init()
     _active_tool = tool
 
 
@@ -75,6 +78,7 @@ def deactivate() -> None:
     Raises:
         ProfilerException: If tearing down the active tool fails.
     """
+    global _active_tool
     if _active_tool == Tool.NCU:
         warnings.warn(
             "NVIDIA Nsight Compute cannot be deactivated once loaded; it stays "
@@ -82,6 +86,9 @@ def deactivate() -> None:
             category=RuntimeWarning,
             stacklevel=2,
         )
+    elif _active_tool == Tool.CUPTI:
+        cupti.finalize()
+        _active_tool = None
 
 
 def get_active_tool() -> Tool | None:

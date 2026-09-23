@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import torch
 
 
@@ -32,6 +33,15 @@ def main() -> None:
 
 def test() -> None:
     """Run this program as a subprocess; profiling must fail with the expected error."""
+    # Imported here, not at module scope: importing nsight before torch.cuda.init()
+    # in main() would defeat what this test exercises.
+    import nsight
+
+    if nsight.get_active_tool() == nsight.Tool.CUPTI:
+        pytest.skip(
+            "NCU-only test: validates injection failure when CUDA is pre-initialized"
+        )
+
     this_file = Path(__file__).resolve()
     result = subprocess.run(
         [sys.executable, str(this_file)],

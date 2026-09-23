@@ -17,6 +17,7 @@ from numpy.typing import NDArray
 import nsight.collection as collection
 import nsight.visualization as visualization
 from nsight.info_collector import CollectionScope, InfoCollector
+from nsight.tools_manager import Tool, activate, get_active_tool
 from nsight.utils import VerbosityLevel
 
 
@@ -106,7 +107,23 @@ def kernel(
     | Callable[[Callable[..., None]], Callable[..., collection.core.ProfileResults]]
 ):
     """
-    A decorator that collects profiling data using NVIDIA Nsight Compute.
+    A decorator that collects profiling data from GPU kernels.
+
+    **Tool selection**
+
+    By default, ``@nsight.analyze.kernel`` profiles using NVIDIA Nsight Compute
+    (NCU). NCU's injection library is loaded automatically on the first call to
+    a decorated function, but it **must** be loaded before CUDA is initialized.
+    This means the first decorated function call must occur before any CUDA-initializing code.
+    To guarantee early loading and avoid this constraint, call  ``nsight.activate(nsight.Tool.NCU)``
+    explicitly at the very top of your script, before any CUDA imports.
+
+    CUPTI is also supported *(experimental)* for lightweight collection of
+    ``"gpu__time_duration.sum"`` using kernel timestamps, without launching
+    ``ncu``. To enable it, call ``nsight.activate(nsight.Tool.CUPTI)`` before
+    profiling. CUPTI does not have the CUDA initialization ordering constraint.
+    See :class:`~nsight.collection.cupti.CUPTICollector` for supported metrics
+    and limitations.
 
     Can be used with or without parentheses:
         - ``@nsight.analyze.kernel`` (no parentheses)
@@ -159,7 +176,7 @@ def kernel(
         derive_metric:
             A function to transform the collected metrics.
             This can be used to compute derived metrics like TFLOPs that cannot
-            be captured by ncu directly. The function takes the metric values and
+            be captured directly. The function takes the metric values and
             the arguments of the profile-decorated function and returns the new
             metrics. Return value can be either:
 
@@ -182,7 +199,7 @@ def kernel(
             Combine with ``derive_metric`` to compute speedup (reciprocal of normalized value).
         metrics: The metrics to collect. By default, kernel runtimes in nanoseconds
             are collected. Default: ``["gpu__time_duration.sum"]``. To see the available
-            metrics on your system, use the command: ``ncu --query-metrics``.
+            metrics on your system when using ncu, use the command: ``ncu --query-metrics``.
         ignore_kernel_list:
             List of kernel names to ignore. If you call a library within an annotated range context, you might not have precise control over which and how many kernels are being launched.
             If some of these kernels should be ignored in the profile, their names can be provided in this parameter. Default: ``None``
@@ -364,6 +381,22 @@ def kernel(
     # Strip whitespace
     metrics = [m.strip() for m in metrics]
 
+    # These are decorator parameters, so reject illegal values now rather than
+    # when the decorated function is first called. Whether the active tool
+    # supports a legal value is a separate check, made by the collector.
+    if clock_control not in ("base", "none"):
+        raise ValueError(
+            f"Invalid clock_control {clock_control!r}. Expected 'base' or 'none'."
+        )
+    if cache_control not in ("all", "none"):
+        raise ValueError(
+            f"Invalid cache_control {cache_control!r}. Expected 'all' or 'none'."
+        )
+    if replay_mode not in ("kernel", "range"):
+        raise ValueError(
+            f"Invalid replay_mode {replay_mode!r}. Expected 'kernel' or 'range'."
+        )
+
     # Validate thermal parameters if both are provided
     if thermal_wait is not None and thermal_cont is not None:
         if thermal_cont <= thermal_wait:
@@ -461,15 +494,26 @@ def kernel(
             output_csv=output_csv,
             info_collectors=normalized_collectors,
         )
-        ncu = collection.ncu.NCUCollector(
-            metrics=metrics,
-            ignore_kernel_list=ignore_kernel_list,
-            combine_kernel_metrics=combine_kernel_metrics,
-            clock_control=clock_control,
-            cache_control=cache_control,
-            replay_mode=replay_mode,
-        )
-        return collection.core.NsightProfiler(settings, ncu)
+
+        def get_collector() -> collection.core.NsightCollector:
+            if get_active_tool() == Tool.CUPTI:
+                # clock_control, cache_control and replay_mode have no
+                # meaning for CUPTI, so the collector does not take them.
+                return collection.cupti.CUPTICollector(
+                    metrics=metrics,
+                    ignore_kernel_list=ignore_kernel_list,
+                    combine_kernel_metrics=combine_kernel_metrics,
+                )
+            return collection.ncu.NCUCollector(
+                metrics=metrics,
+                ignore_kernel_list=ignore_kernel_list,
+                combine_kernel_metrics=combine_kernel_metrics,
+                clock_control=clock_control,
+                cache_control=cache_control,
+                replay_mode=replay_mode,
+            )
+
+        return collection.core.NsightProfiler(settings, get_collector)
 
     # Support both @kernel and @kernel() syntax
     if _func is None:
