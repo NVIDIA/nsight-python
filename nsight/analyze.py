@@ -109,22 +109,6 @@ def kernel(
     """
     A decorator that collects profiling data from GPU kernels.
 
-    **Tool selection**
-
-    By default, ``@nsight.analyze.kernel`` profiles using NVIDIA Nsight Compute
-    (NCU). NCU's injection library is loaded automatically on the first call to
-    a decorated function, but it **must** be loaded before CUDA is initialized.
-    This means the first decorated function call must occur before any CUDA-initializing code.
-    To guarantee early loading and avoid this constraint, call  ``nsight.activate(nsight.Tool.NCU)``
-    explicitly at the very top of your script, before any CUDA imports.
-
-    CUPTI is also supported *(experimental)* for lightweight collection of
-    ``"gpu__time_duration.sum"`` using kernel timestamps, without launching
-    ``ncu``. To enable it, call ``nsight.activate(nsight.Tool.CUPTI)`` before
-    profiling. CUPTI does not have the CUDA initialization ordering constraint.
-    See :class:`~nsight.collection.cupti.CUPTICollector` for supported metrics
-    and limitations.
-
     Can be used with or without parentheses:
         - ``@nsight.analyze.kernel`` (no parentheses)
         - ``@nsight.analyze.kernel()`` (empty parentheses)
@@ -155,6 +139,14 @@ def kernel(
         but will always be empty during profiling. Parameters with default values
         may be omitted from configs — missing values will be filled from the defaults.
 
+    Profiling uses NVIDIA Nsight Compute by default. Activating it is automatic
+    -- it happens during ``import nsight`` -- and needs no attention from you.
+    For more control over when NVIDIA Nsight Compute is loaded, see the
+    :doc:`/tools` page.
+
+    ``@nsight.analyze.kernel`` supports collection of
+    ``"gpu__time_duration.sum"`` via the low-overhead, experimental CUPTI
+    backend. See the :doc:`/tools` page for how to enable it.
 
     Parameters:
         configs: An iterable of configurations to run the function with. Each configuration can be either:
@@ -218,6 +210,8 @@ def kernel(
             Default: ``"none"``
 
             Refer the `NVIDIA Nsight Compute documentation on Clock Control <https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#clock-control>`_ for more details.
+
+            Ignored when the CUPTI backend is active.
         cache_control: Control the behavior of the GPU caches during profiling. Allowed values:
 
             - ``"all"``: All GPU caches are flushed before each kernel replay iteration during profiling. While metric values in the execution environment of the application might be slightly different without invalidating the caches, this mode offers the most reproducible metric results across the replay passes and also across multiple runs of the target application.
@@ -225,12 +219,16 @@ def kernel(
 
             Default: ``"all"``
 
+            Ignored when the CUPTI backend is active.
+
         replay_mode: Mechanism used for replaying a kernel launch multiple times to collect selected metrics. Allowed values:
 
             - ``"kernel"``:  Replay individual kernel launches  during the execution of the application.
             - ``"range"``: Replay range of  kernel launches during the execution of the application. Ranges are defined using nsight.annotate.
 
             Default: ``"kernel"``
+
+            Ignored when the CUPTI backend is active.
 
         thermal_mode: Controls GPU thermal management mode. Default: ``"auto"``
 

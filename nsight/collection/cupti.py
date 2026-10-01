@@ -214,28 +214,9 @@ class CUPTICollector(core.NsightCollector):
     Experimental CUPTI-based collector for Nsight Python.
 
     Uses CUPTI activity records to measure kernel durations directly, without
-    launching ``ncu``. This makes it lower-overhead than the NCU collector but
-    comes with the following limitations:
-
-    **Supported metrics:** Only ``"gpu__time_duration.sum"`` is supported. CUPTI
-    measures this by recording kernel start and end timestamps from CUPTI activity
-    records (``CONCURRENT_KERNEL``), computing ``end - start`` per kernel launch.
-
-    **Replay mode:** Neither kernel replay nor range replay is supported. CUPTI
-    activity records capture one execution of each kernel in a single pass; no
-    replay mechanism is engaged.
-
-    **Clock and cache control:** ``clock_control`` and ``cache_control`` are not
-    supported. Clocks are not locked and caches are not flushed between runs,
-    which may affect measurement stability. Use :attr:`ProfileSettings.runs` with
-    a sufficient number of repetitions and check ``StableMeasurement`` in the
-    output to detect high variance.
-
-    .. note::
-        The whole device is synchronized once after the profiling session, before
-        the activity buffers are flushed, because a kernel's activity record is
-        only written when the kernel completes. Work the profiled function left
-        running asynchronously is therefore waited for before profiling returns.
+    launching ``ncu``. This makes it lower-overhead than the NCU collector, at
+    the cost of supporting fewer metrics and settings. See the :doc:`/tools`
+    page for the supported metrics and limitations.
 
     Args:
         metrics: Must be ``["gpu__time_duration.sum"]``.
