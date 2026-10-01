@@ -39,7 +39,7 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
-        pytorch_image: ["nvcr.io/nvidia/pytorch:26.06-py3"]
+        pytorch_image: ["nvcr.io/nvidia/pytorch:26.09-py3"]
         platform:
           - runner: linux-amd64-gpu-h100-latest-1
             ncu_installer_url: "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-x86_64-2026.2.1.6.run"
@@ -67,7 +67,7 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
-        pytorch_image: ["nvcr.io/nvidia/pytorch:26.06-py3"]
+        pytorch_image: ["nvcr.io/nvidia/pytorch:26.09-py3"]
         platform:
           - runner: linux-amd64-gpu-h100-latest-1
           - runner: linux-arm64-gpu-l4-latest-1
