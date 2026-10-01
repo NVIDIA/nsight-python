@@ -35,7 +35,12 @@ For CUDA Toolkit 13:
 
     pip install nsight-python[cu13]
 
-.. note::
-   The ``[cu12]`` and ``[cu13]`` extras install the ``cuda-core`` package, which is only required if you plan to use ``ignore_failures=True`` in ``nsight.annotate``. 
-   All other features of Nsight Python work without this dependency.
+Optional: Installing with CUPTI Support
+----------------------------------------
 
+If you want to use the experimental CUPTI backend with ``nsight.analyze.kernel``, you need to install the ``cupti-python`` package.
+This is an optional dependency that enables low-overhead collection of kernel time durations.
+
+.. code-block:: bash
+
+    pip install nsight-python[cupti]
