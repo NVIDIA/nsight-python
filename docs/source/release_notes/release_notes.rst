@@ -7,6 +7,7 @@ Release Notes
 .. toctree::
    :maxdepth: 2
 
+   topics/updates-in-nsight-python-1.1.0
    topics/updates-in-nsight-python-1.0.0
    topics/updates-in-nsight-python-0.9.6
    topics/updates-in-nsight-python-0.9.5
