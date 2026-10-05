@@ -14,6 +14,7 @@ Platform Support
 
 -  Linux (x86_64)
 -  Linux (aarch64)
+-  Windows (x86_64)
 
 GPU Support
 -----------
