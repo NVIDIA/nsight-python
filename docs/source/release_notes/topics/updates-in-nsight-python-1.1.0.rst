@@ -13,8 +13,8 @@ Enhancements
   See :doc:`/tools`.
 
 - **Added experimental CUPTI backend**:
-  Kernel durations can now be collected with CUPTI, a lightweight alternative
-  to NVIDIA Nsight Compute. To get started with the CUPTI backend in
+  Kernel durations can now be collected with CUPTI as an alternative to
+  NVIDIA Nsight Compute. To get started with the CUPTI backend in
   :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`, see
   :ref:`tools-cupti`. For installation and runtime requirements, please see
   :doc:`Installation </installation/installation_from_pypi>` and
