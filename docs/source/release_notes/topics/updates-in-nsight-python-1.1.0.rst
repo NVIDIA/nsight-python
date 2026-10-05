@@ -7,6 +7,11 @@ Updates in Nsight Python 1.1.0
 Enhancements
 ------------
 
+- **Added explicit tool management APIs**:
+  Added ``nsight.Tool``, :func:`nsight.activate`, :func:`nsight.deactivate`,
+  and :func:`nsight.get_active_tool` for profiling tool life cycle management.
+  See :doc:`/tools`.
+
 - **Added experimental CUPTI backend**:
   Kernel durations can now be collected with CUPTI, a lightweight alternative
   to NVIDIA Nsight Compute. To get started with the CUPTI backend in
@@ -14,11 +19,6 @@ Enhancements
   :ref:`tools-cupti`. For installation and runtime requirements, please see
   :doc:`Installation </installation/installation_from_pypi>` and
   :doc:`Runtime Requirements </installation/runtime_requirements>`.
-
-- **Added explicit tool management APIs**:
-  Added ``nsight.Tool``, :func:`nsight.activate`, :func:`nsight.deactivate`,
-  and :func:`nsight.get_active_tool` for profiling tool life cycle management.
-  See :doc:`/tools`.
 
 - **Added experimental custom information collectors**: Profiling results can
   now include application-specific information collected once per session,
