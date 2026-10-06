@@ -93,11 +93,23 @@ jobs:
         shell: pwsh
         run: |
           curl.exe -L -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_3_1/nsight_compute-windows-x86_64-2026.3.1.2.msi"
-          Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i','ncu_installer.msi','/quiet','/norestart','/l*v','ncu_install.log'
+          # 0 = installed, 3010 = installed, reboot pending
+          if ($p.ExitCode -notin 0, 3010) {
+            Get-Content ncu_install.log -Tail 50
+            throw "Nsight Compute installer failed with exit code $($p.ExitCode)"
+          }
           Remove-Item ncu_installer.msi
-          $ncuDir = "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3.1"
-          if (-not (Test-Path "$ncuDir\ncu.exe")) { throw "ncu.exe not found in $ncuDir" }
-          $ncuDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Find the install instead of assuming the directory name. The runner
+          # is self-hosted, so older versions may still be installed alongside.
+          $ncu = Get-ChildItem "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3*\ncu.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $ncu) {
+            Get-ChildItem "C:\Program Files\NVIDIA Corporation" -Directory | Format-Table Name
+            throw "ncu.exe for Nsight Compute 2026.3 not found"
+          }
+          Write-Host "Using $($ncu.FullName)"
+          $ncu.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: "Install MSVC Redistributable (required by torch)"
         shell: pwsh
         run: |
