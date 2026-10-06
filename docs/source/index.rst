@@ -47,6 +47,7 @@ Welcome to the Nsight Python documentation!
 
    analyze
    annotation
+   tools
 
 .. toctree::
    :hidden:

@@ -14,21 +14,34 @@ from pathlib import Path
 import pytest
 import torch
 
-torch.cuda.init()  # There can be any other torch call that initializes CUDA before nsight is imported
 
-import nsight
+def main() -> None:
 
+    torch.cuda.init()  # any torch call that initializes CUDA would do
+    import nsight  # this loads NCU, and the test needs it loaded after CUDA init
 
-@nsight.analyze.kernel()
-def run_simple_kernel(n: int) -> None:
-    a = torch.randn(n, n, device="cuda")
-    b = torch.randn(n, n, device="cuda")
-    with nsight.annotate("test"):
-        _ = a @ b
+    @nsight.analyze.kernel()
+    def run_simple_kernel(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+        with nsight.annotate("test"):
+            _ = a @ b
+
+    # under NSPY_NCU_INIT_AT_IMPORT=0 the load is deferred to here instead, still after CUDA init
+    run_simple_kernel(64)
 
 
 def test() -> None:
     """Run this program as a subprocess; profiling must fail with the expected error."""
+    # Imported here, not at module scope: importing nsight before torch.cuda.init()
+    # in main() would defeat what this test exercises.
+    import nsight
+
+    if nsight.get_active_tool() == nsight.Tool.CUPTI:
+        pytest.skip(
+            "NCU-only test: validates injection failure when CUDA is pre-initialized"
+        )
+
     this_file = Path(__file__).resolve()
     result = subprocess.run(
         [sys.executable, str(this_file)],
@@ -53,4 +66,4 @@ def test() -> None:
 
 
 if __name__ == "__main__":
-    run_simple_kernel(64)
+    main()

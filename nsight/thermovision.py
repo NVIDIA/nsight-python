@@ -210,15 +210,19 @@ class ThermalController:
         Thermal headroom = temperature margin before GPU starts throttling.
 
         Operates in two modes:
+
         - Auto mode: Automatically adjusts thermal_cont based on workload
         - Manual mode: Uses user-provided thresholds without adaptation
 
         Adaptive Algorithm (in auto mode):
+
         1. When thermal headroom reaches thermal_cont after cooling, start counting iterations
         2. Run kernel as headroom drops from thermal_cont toward thermal_wait
         3. When headroom drops below thermal_wait, analyze iteration count:
+
            - Few iterations (<TARGET_MIN_ITERATIONS): GPU heats quickly → increase thermal_cont (cool more)
            - Many iterations (>TARGET_MAX_ITERATIONS): GPU heats slowly → decrease thermal_cont (cool less)
+
         4. Wait until GPU cools back to thermal_cont, then repeat
         """
         self._refresh_device_for_current_cuda_context()

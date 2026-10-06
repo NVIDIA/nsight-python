@@ -16,6 +16,9 @@ from cuda.core import Device, LaunchConfig, Program, launch
 import nsight
 from nsight import exceptions
 
+_cupti_active = nsight.get_active_tool() == nsight.Tool.CUPTI
+_skip_cupti = pytest.mark.skipif(_cupti_active, reason="not supported by cupti")
+
 # Common CUDA kernel code for tests that launch multiple kernels
 CUDA_KERNEL_CODE = """
 extern "C" __global__ void vector_add(const float* a, const float* b, float* c, int n) {
@@ -582,6 +585,7 @@ def normalize_against_multiple_metrics(n: int) -> None:
         _ = c + d
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_parameter_normalize_against_multiple_metrics() -> None:
     profile_output = normalize_against_multiple_metrics()
     if profile_output is not None:
@@ -631,6 +635,7 @@ def output_prefix_func(n: int) -> None:
         _ = a + b
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_parameter_output_prefix() -> None:
     """Test that output_prefix creates directories and files with correct prefix."""
     output_dir = "/tmp/test_output_prefix"
@@ -655,6 +660,7 @@ def test_parameter_output_prefix() -> None:
 # ----------------------------------------------------------------------------
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 @pytest.mark.parametrize("output_csv", [True, False])  # type: ignore[untyped-decorator]
 def test_parameter_output_csv(output_csv: bool) -> None:
     """Test the output_csv parameter to control CSV file generation."""
@@ -770,6 +776,7 @@ def test_parameter_ignore_kernel_list(ignore_kernel_list: None | list[str]) -> N
 # ============================================================================
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 @pytest.mark.parametrize("clock_control", ["base", "none", "invalid_value"])  # type: ignore[untyped-decorator]
 def test_parameter_clock_control(
     clock_control: Literal["base", "none", "invalid_value"],
@@ -800,6 +807,7 @@ def test_parameter_clock_control(
 # ============================================================================
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 @pytest.mark.parametrize("cache_control", ["all", "none", "invalid_value"])  # type: ignore[untyped-decorator]
 def test_parameter_cache_control(
     cache_control: Literal["all", "none", "invalid_value"],
@@ -861,6 +869,7 @@ def test_parameter_thermal_mode(thermal_mode: Literal["auto", "manual", "off"]) 
         "invalid_value",  # range mode should handle invalid values
     ],
 )  # type: ignore[untyped-decorator]
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_parameter_replay_mode(
     replay_mode: Literal["kernel", "range", "invalid_value"],
 ) -> None:
@@ -1153,6 +1162,7 @@ def test_parameter_output(
         ),
     ],
 )
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None:
 
     # Don't use plot decorator for multiple metrics test
@@ -1311,6 +1321,7 @@ def test_parameter_metrics(metrics: Sequence[str], expected_result: str) -> None
         ),
     ],
 )
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_legalize_metric_in_plot(
     metrics: Sequence[str], metric_param: str | None, expected_result: str
 ) -> None:
@@ -1564,6 +1575,7 @@ def test_tuple_typed_function_args() -> None:
     ), f"tile_shape should be preserved as tuple, got {df['tile_shape'].iloc[0]}"
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_tuple_typed_function_args_multiple_metrics() -> None:
     """Test that with multiple metrics, only Value/Metric are exploded, not tuple args.
 

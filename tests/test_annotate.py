@@ -84,7 +84,15 @@ def test_annotate_context_manager(ignore_failures: bool) -> None:
             ):
                 raise DummyTestException()
 
-    annotate_context_manager()
+    result = annotate_context_manager()
+    assert result is not None
+    df = result.to_dataframe()
+    if ignore_failures:
+        assert df["Kernel"].str.contains("dummy_kernel_failure").all()
+        assert df["AvgValue"].isna().all()
+    else:
+        assert not df["Kernel"].str.contains("dummy_kernel_failure").any()
+        assert df["AvgValue"].notna().all()
 
 
 @pytest.mark.parametrize(
@@ -123,7 +131,15 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
         else:
             raise_exception(a, False)
 
-    annotate_decorator()
+    result = annotate_decorator()
+    assert result is not None
+    df = result.to_dataframe()
+    if ignore_failures:
+        assert df["Kernel"].str.contains("dummy_kernel_failure").all()
+        assert df["AvgValue"].isna().all()
+    else:
+        assert not df["Kernel"].str.contains("dummy_kernel_failure").any()
+        assert df["AvgValue"].notna().all()
 
 
 def test_annotate_captures_kernel_from_worker_thread() -> None:
@@ -231,3 +247,37 @@ def test_active_annotations_duplicate_name_decorator() -> None:
                 _ = annotated_function(a, b)
 
     duplicate_annotation_decorator_test()
+
+
+def test_failed_run_does_not_leak_into_the_next_one() -> None:
+    """A session that raises must not leave its kernels in the next session.
+
+    Activity records sit in CUPTI's buffers until they are flushed, so a
+    session that exits without flushing hands its records to whichever session
+    flushes next, which then sees them as its own kernels.
+    """
+
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=1, verbosity=nsight.VerbosityLevel.SILENT
+    )
+    def raises(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        with nsight.annotate("leak_check"):
+            _ = a + a
+            raise DummyTestException()
+
+    @nsight.analyze.kernel(
+        configs=[(64,)], runs=1, verbosity=nsight.VerbosityLevel.SILENT
+    )
+    def succeeds(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        with nsight.annotate("leak_check"):
+            _ = a + a
+
+    with pytest.raises(DummyTestException):
+        raises()
+
+    # One kernel was launched here; extraction raises if it sees two.
+    result = succeeds()
+    assert result is not None
+    assert len(result.to_dataframe()) == 1

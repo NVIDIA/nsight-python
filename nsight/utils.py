@@ -6,7 +6,6 @@ import functools
 import inspect
 import os
 import re
-import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -37,6 +36,11 @@ except ImportError:
     launch = None
 
 NVTX_DOMAIN = "nsight-python"
+
+# Launched in place of the real work when an annotation fails with
+# ignore_failures=True. Both tools recognize it by name and report the run as
+# NaN rather than timing the placeholder.
+DUMMY_KERNEL_NAME = "dummy_kernel_failure"
 
 
 class VerbosityLevel(enum.IntEnum):
@@ -97,10 +101,10 @@ def get_dummy_kernel_module() -> Any:
     """
     if not CUDA_CORE_AVAILABLE:
         raise ImportError(CUDA_CORE_UNAVAILABLE_MSG)
-    code = "__global__ void dummy_kernel_failure() {}"
+    code = f"__global__ void {DUMMY_KERNEL_NAME}() {{}}"
     program_options = ProgramOptions(std="c++17")
     prog = Program(code, code_type="c++", options=program_options)
-    return prog.compile("cubin", name_expressions=("dummy_kernel_failure",))
+    return prog.compile("cubin", name_expressions=(DUMMY_KERNEL_NAME,))
 
 
 def launch_dummy_kernel_module() -> None:
@@ -116,7 +120,7 @@ def launch_dummy_kernel_module() -> None:
     dev.set_current()
     stream = dev.create_stream()
     mod = get_dummy_kernel_module()
-    kernel = mod.get_kernel("dummy_kernel_failure")
+    kernel = mod.get_kernel(DUMMY_KERNEL_NAME)
     config = LaunchConfig(grid=1, block=256)
     launch(stream, config, kernel)
     stream.sync()
@@ -139,7 +143,7 @@ def print_header(*lines: str) -> None:
 
 
 @dataclass
-class NCUActionData:
+class ActionData:
     name: str
     values: NDArray[Any] | None
     compute_clock: int
@@ -150,16 +154,16 @@ class NCUActionData:
     @staticmethod
     def combine(value_reduce_op: Any) -> Any:
         """
-        Combines two NCUActionData objects into a new one by applying the
+        Combines two ActionData objects into a new one by applying the
         value_reduce_op to their values.
         """
 
-        def _combine(lhs: "NCUActionData", rhs: "NCUActionData") -> "NCUActionData":
+        def _combine(lhs: "ActionData", rhs: "ActionData") -> "ActionData":
             assert lhs.compute_clock == rhs.compute_clock
             assert lhs.memory_clock == rhs.memory_clock
             assert lhs.gpu == rhs.gpu
             assert lhs.units == rhs.units
-            return NCUActionData(
+            return ActionData(
                 name=f"{lhs.name}|{rhs.name}",
                 values=value_reduce_op(lhs.values, rhs.values),
                 compute_clock=lhs.compute_clock,
@@ -376,3 +380,12 @@ def find_external_stacklevel() -> int:
 def is_scalar(config: Any) -> bool:
     """Return True if x is a scalar (not a sequence)."""
     return isinstance(config, str) or not isinstance(config, Sequence)
+
+
+def get_device_properties() -> tuple[str, int, int]:
+    """
+    Returns the name of the device, the compute and memory clocks.
+    """
+    device = Device()
+    properties = device.properties
+    return device.name, properties.clock_rate, properties.memory_clock_rate

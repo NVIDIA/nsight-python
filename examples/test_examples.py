@@ -5,12 +5,18 @@ import importlib
 
 import pytest
 
+import nsight
+
+_cupti_active = nsight.get_active_tool() == nsight.Tool.CUPTI
+_skip_cupti = pytest.mark.skipif(_cupti_active, reason="metric not supported in cupti")
+
 
 def test_00_minimal() -> None:
     minimal = importlib.import_module("examples.00_minimal")
     minimal.main()
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_01_compare_throughput() -> None:
     compare_throughput = importlib.import_module("examples.01_compare_throughput")
     compare_throughput.main()
@@ -47,21 +53,25 @@ def test_07_triton_minimal() -> None:
     triton_minimal.main()
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_08_multiple_metrics() -> None:
     multiple_metrics = importlib.import_module("examples.08_multiple_metrics")
     multiple_metrics.main()
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_09_advanced_metric_custom() -> None:
     advanced_custom = importlib.import_module("examples.09_advanced_metric_custom")
     advanced_custom.main()
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_10_combine_kernel_metrics() -> None:
     combine_metrics = importlib.import_module("examples.10_combine_kernel_metrics")
     combine_metrics.main()
 
 
+@_skip_cupti  # type: ignore[untyped-decorator]
 def test_11_output_csv() -> None:
     output_csv = importlib.import_module("examples.11_output_csv")
     output_csv.main()

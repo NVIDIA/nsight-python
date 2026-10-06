@@ -11,12 +11,19 @@ Functions:
     extract_ncu_action_data(action, metrics):
         Extracts performance data for a specific kernel action from an NVIDIA Nsight Compute report.
 
+    extract_data_from_report(report_path, metrics, func, ignore_kernel_list, verbosity):
+        Loads an NVIDIA Nsight Compute report and returns a dict of raw per-annotation measurements.
+
+    extract_df_from_data(profiling_data, metrics, configs, iterations, func, derive_metric, verbosity, combine_kernel_metrics=None):
+        Aggregates raw per-annotation measurements (from either tool) into a pandas DataFrame.
+
     extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, verbosity, combine_kernel_metrics=None):
         Processes the full NVIDIA Nsight Compute report and returns a pandas DataFrame containing performance metrics.
 """
 
 import functools
 import inspect
+import os
 import socket
 import warnings
 from collections.abc import Callable, Mapping, Sequence
@@ -41,7 +48,7 @@ DERIVED_METRIC_MISSING_UNIT_WARNING = (
 )
 
 
-def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUActionData:
+def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.ActionData:
     """
     Extracts performance data from an NVIDIA Nsight Compute kernel action.
 
@@ -60,13 +67,13 @@ def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUAct
             raise exceptions.ProfilerException(error_message)
 
     # Extract values for all metrics.
-    failure = "dummy_kernel_failure" in action.name()
+    failure = utils.DUMMY_KERNEL_NAME in action.name()
     all_values = (
         None if failure else np.array([action[metric].value() for metric in metrics])
     )
     all_units = [action[metric].unit() for metric in metrics]
 
-    return utils.NCUActionData(
+    return utils.ActionData(
         name=action.name(),
         values=all_values,
         compute_clock=action["device__attribute_clock_rate"].value(),
@@ -76,41 +83,30 @@ def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.NCUAct
     )
 
 
-def extract_df_from_report(
+def extract_data_from_report(
     report_path: str,
     metrics: Sequence[str],
-    configs: List[Tuple[Any, ...]],
-    iterations: int,
     func: Callable[..., Any],
-    derive_metric: Callable[..., Any] | None,
     ignore_kernel_list: List[str] | None,
     verbosity: VerbosityLevel,
-    combine_kernel_metrics: Callable[[float, float], float] | None = None,
-    info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
-    config_scope_columns: List[str] | None = None,
-    annotation_scope_columns: List[str] | None = None,
-    info_prefix: str | None = None,
-) -> pd.DataFrame:
+) -> dict[str, list[utils.ActionData]]:
     """
-    Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
+    Loads an NVIDIA Nsight Compute report and returns the raw per-annotation
+    measurements.
 
     Args:
         report_path: Path to the report file.
         metrics: The NVIDIA Nsight Compute metrics to extract.
-        configs: Configuration settings used during profiling runs.
-        iterations: Number of times each configuration was run.
         func: Function representing the kernel launch with parameter signature.
-        derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
-        combine_kernel_metrics: Function to merge multiple kernel metrics.
         verbosity: Controls display of extraction progress.
 
     Returns:
-        A DataFrame containing the extracted and transformed performance data.
+        A dictionary mapping annotation name to the list of measurements
+        collected for it.
 
     Raises:
-        RuntimeError: If multiple kernels are detected per config without a combining function.
-        exceptions.ProfilerException: If profiling results are missing or incomplete.
+        exceptions.ProfilerException: If the report file is missing.
     """
     if verbosity >= VerbosityLevel.INFO:
         print("[NSIGHT-PYTHON] Loading profiled data")
@@ -122,6 +118,69 @@ def extract_df_from_report(
             "to identify the issue."
         )
 
+    # Extract all profiling data
+    profiling_data: dict[str, list[utils.ActionData]] = {}
+    for range_idx in range(report.num_ranges()):
+        current_range: ncu_report.IRange = report.range_by_idx(range_idx)
+        for action_idx in range(current_range.num_actions()):
+            action: ncu_report.IAction = current_range.action_by_idx(action_idx)
+            state: ncu_report.INvtxState = action.nvtx_state()
+
+            for domain_idx in state.domains():
+                domain: ncu_report.INvtxDomainInfo = state.domain_by_id(domain_idx)
+
+                # ignore actions not in the nsight-python nvtx domain
+                if domain.name() != utils.NVTX_DOMAIN:
+                    continue
+                # ignore kernels in ignore_kernel_list
+                if ignore_kernel_list and action.name() in ignore_kernel_list:
+                    continue
+
+                annotation: str = domain.start_end_ranges()[0]
+                data = extract_ncu_action_data(action, metrics)
+
+                if annotation not in profiling_data:
+                    profiling_data[annotation] = []
+                profiling_data[annotation].append(data)
+
+    return profiling_data
+
+
+def extract_df_from_data(
+    profiling_data: dict[str, list[utils.ActionData]],
+    metrics: Sequence[str],
+    configs: List[Tuple[Any, ...]],
+    iterations: int,
+    func: Callable[..., Any],
+    derive_metric: Callable[..., Any] | None,
+    verbosity: VerbosityLevel,
+    combine_kernel_metrics: Callable[[float, float], float] | None = None,
+    info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
+    config_scope_columns: List[str] | None = None,
+    annotation_scope_columns: List[str] | None = None,
+    info_prefix: str | None = None,
+) -> pd.DataFrame:
+    """
+    Aggregates raw per-annotation measurements (from either tool) into a pandas
+    DataFrame.
+
+    Args:
+        profiling_data: Raw per-annotation measurements to aggregate.
+        metrics: The metrics to extract.
+        configs: Configuration settings used during profiling runs.
+        iterations: Number of times each configuration was run.
+        func: Function representing the kernel launch with parameter signature.
+        derive_metric: Function to transform the raw metric values with config values.
+        verbosity: Controls display of extraction progress.
+        combine_kernel_metrics: Function to merge multiple kernel metrics.
+
+    Returns:
+        A DataFrame containing the extracted and transformed performance data.
+
+    Raises:
+        RuntimeError: If multiple kernels are detected per config without a combining function.
+        exceptions.ProfilerException: If profiling results are missing or incomplete.
+    """
     annotations: List[str] = []
     all_values: List[Tuple[Any, ...] | None] = []
     all_transformed_values: List[
@@ -151,14 +210,10 @@ def extract_df_from_report(
     collected_info_per_run = []
     custom_info_names = set()
     if info_collectors_list:
-        import os
-
-        # Use the explicitly-provided prefix when available so the read path
-        # matches the collection-session write path exactly.
-        # Fall back to reconstructing from the report directory for direct callers.
+        # The caller supplies the prefix so the read path matches the
+        # collection-session write path exactly.
         if info_prefix is None:
-            report_dir = os.path.dirname(report_path)
-            info_prefix = os.path.join(report_dir, "") if report_dir else ""
+            info_prefix = ""
 
         # Column names come from the collector metadata (authoritative), not from
         # the first run's collected data. Deriving from run 0 dropped any
@@ -190,31 +245,6 @@ def extract_df_from_report(
 
     # Create arrays for custom info collectors
     custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
-
-    # Extract all profiling data
-    profiling_data: dict[str, list[utils.NCUActionData]] = {}
-    for range_idx in range(report.num_ranges()):
-        current_range: ncu_report.IRange = report.range_by_idx(range_idx)
-        for action_idx in range(current_range.num_actions()):
-            action: ncu_report.IAction = current_range.action_by_idx(action_idx)
-            state: ncu_report.INvtxState = action.nvtx_state()
-
-            for domain_idx in state.domains():
-                domain: ncu_report.INvtxDomainInfo = state.domain_by_id(domain_idx)
-
-                # ignore actions not in the nsight-python nvtx domain
-                if domain.name() != utils.NVTX_DOMAIN:
-                    continue
-                # ignore kernels in ignore_kernel_list
-                if ignore_kernel_list and action.name() in ignore_kernel_list:
-                    continue
-
-                annotation: str = domain.start_end_ranges()[0]
-                data = extract_ncu_action_data(action, metrics)
-
-                if annotation not in profiling_data:
-                    profiling_data[annotation] = []
-                profiling_data[annotation].append(data)
 
     for annotation, annotation_data in profiling_data.items():
         if verbosity >= VerbosityLevel.INFO:
@@ -256,13 +286,13 @@ def extract_df_from_report(
             ), "Profiler error: combine_kernel_metrics must be a binary function"
 
         # rewrite annotation_data to combine the kernels
-        action_data: list[utils.NCUActionData] = []
+        action_data: list[utils.ActionData] = []
         for data_tuple in utils.batched(annotation_data, num_kernels):
             # Convert tuple to list for functools.reduce
-            batch_list: list[utils.NCUActionData] = list(data_tuple)
+            batch_list: list[utils.ActionData] = list(data_tuple)
             action_data.append(
                 functools.reduce(
-                    utils.NCUActionData.combine(combine_kernel_metrics), batch_list
+                    utils.ActionData.combine(combine_kernel_metrics), batch_list
                 )
             )
 
@@ -470,3 +500,69 @@ def extract_df_from_report(
         df.attrs["annotation_scope_columns"] = annotation_scope_columns
 
     return df
+
+
+def extract_df_from_report(
+    report_path: str,
+    metrics: Sequence[str],
+    configs: List[Tuple[Any, ...]],
+    iterations: int,
+    func: Callable[..., Any],
+    derive_metric: Callable[..., Any] | None,
+    ignore_kernel_list: List[str] | None,
+    verbosity: VerbosityLevel,
+    combine_kernel_metrics: Callable[[float, float], float] | None = None,
+    info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
+    config_scope_columns: List[str] | None = None,
+    annotation_scope_columns: List[str] | None = None,
+    info_prefix: str | None = None,
+) -> pd.DataFrame:
+    """
+    Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
+
+    Args:
+        report_path: Path to the report file.
+        metrics: The NVIDIA Nsight Compute metrics to extract.
+        configs: Configuration settings used during profiling runs.
+        iterations: Number of times each configuration was run.
+        func: Function representing the kernel launch with parameter signature.
+        derive_metric: Function to transform the raw metric values with config values.
+        ignore_kernel_list: Kernel names to ignore in the analysis.
+        combine_kernel_metrics: Function to merge multiple kernel metrics.
+        verbosity: Controls display of extraction progress.
+
+    Returns:
+        A DataFrame containing the extracted and transformed performance data.
+
+    Raises:
+        RuntimeError: If multiple kernels are detected per config without a combining function.
+        exceptions.ProfilerException: If profiling results are missing or incomplete.
+    """
+    profiling_data = extract_data_from_report(
+        report_path,
+        metrics,
+        func,
+        ignore_kernel_list,
+        verbosity,
+    )
+
+    # Fall back to reconstructing the info prefix from the report directory for
+    # direct callers that did not supply one.
+    if info_collectors_list and info_prefix is None:
+        report_dir = os.path.dirname(report_path)
+        info_prefix = os.path.join(report_dir, "") if report_dir else ""
+
+    return extract_df_from_data(
+        profiling_data,
+        metrics,
+        configs,
+        iterations,
+        func,
+        derive_metric,
+        verbosity,
+        combine_kernel_metrics,
+        info_collectors_list,
+        config_scope_columns,
+        annotation_scope_columns,
+        info_prefix,
+    )

@@ -633,7 +633,7 @@ class ProfileSettings:
     """
     A function to transform the collected metrics.
     This can be used to compute derived metrics like TFLOPs that cannot
-    be captured by ncu directly. The function takes the metric values and
+    be captured directly. The function takes the metric values and
     the arguments of the profile-decorated function and returns the new
     metrics. See the examples for concrete use cases.
     """
@@ -807,11 +807,14 @@ class NsightProfiler:
     a collector to gather raw profiling data and processes it according to
     the provided settings.
 
-    Attributes:
-        settings: Configuration settings for profiling,
-            including normalization, and other options.
-        collector: The collector responsible for gathering
-            raw profiling data.
+    Args:
+        settings: Configuration settings for profiling (runs, verbosity,
+            derive_metric, output prefix, etc.).
+        get_collector: Factory returning the collector to profile with. It is
+            called lazily, the first time a decorated function runs, and the
+            result is reused for the lifetime of this profiler, so the
+            collector matches whichever tool is active by then rather than at
+            decoration time.
 
     Methods:
         __call__(func):
@@ -820,14 +823,24 @@ class NsightProfiler:
             Returns the processed data.
     """
 
-    def __init__(self, settings: ProfileSettings, collector: NsightCollector):
+    def __init__(
+        self,
+        settings: ProfileSettings,
+        get_collector: Callable[[], NsightCollector],
+    ) -> None:
         self.settings = settings
-        self.collector = collector
+        self._get_collector_fn = get_collector
+        self._collector: NsightCollector | None = None
+
+    def _get_collector(self) -> NsightCollector:
+        if self._collector is None:
+            self._collector = self._get_collector_fn()
+        return self._collector
 
     def __call__(
         self, func: Callable[..., None]
     ) -> Callable[..., ProfileResults | None]:
-        func._nspy_ncu_run_id = 0  # type: ignore[attr-defined]
+        func._nspy_run_id = 0  # type: ignore[attr-defined]
 
         # Fail fast (before starting the profiling session) on collector names
         # that would silently clobber profiler columns or function-arg columns.
@@ -843,7 +856,7 @@ class NsightProfiler:
             **kwargs: Any,
         ) -> ProfileResults | None:
 
-            tag = f"{func.__name__}-{func._nspy_ncu_run_id}"  # type: ignore[attr-defined]
+            tag = f"{func.__name__}-{func._nspy_run_id}"  # type: ignore[attr-defined]
 
             configs = _sanitize_configs(
                 func,
@@ -853,7 +866,7 @@ class NsightProfiler:
                 **kwargs,
             )
 
-            raw_df = self.collector.collect(func, configs, self.settings)
+            raw_df = self._get_collector().collect(func, configs, self.settings)
 
             # Check if the function has a return type
             if raw_df is not None:
@@ -891,7 +904,7 @@ class NsightProfiler:
                             f"[NSIGHT-PYTHON] Refer to {processed_csv_path} for the processed profiling data"
                         )
 
-                func._nspy_ncu_run_id += 1  # type: ignore[attr-defined]
+                func._nspy_run_id += 1  # type: ignore[attr-defined]
 
                 return ProfileResults(results=processed)
 
