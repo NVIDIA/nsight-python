@@ -153,6 +153,11 @@ jobs:
           Remove-Item C:\dumps\* -Force -ErrorAction SilentlyContinue
       - name: "Minimal repro outside pytest"
         shell: pwsh
+        env:
+          # Step output is a pipe, so Python encodes it with the Windows code
+          # page (cp1252), which cannot represent the box-drawing characters in
+          # nsight's banner. pytest is unaffected because it captures output.
+          PYTHONIOENCODING: utf-8
         run: |
           # Smallest program that reproduces the shutdown abort: one profiled
           # torch kernel, no pytest, no test suite.
