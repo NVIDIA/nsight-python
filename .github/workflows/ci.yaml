@@ -81,8 +81,8 @@ jobs:
           pip install hatch
           hatch run test_cu13:run -- --tool-init=cupti
 
-  test-windows:
-    name: test (windows-amd64-gpu-a100-latest-1)
+  test-ncu-windows:
+    name: test-ncu (windows-amd64-gpu-a100-latest-1)
     runs-on: windows-amd64-gpu-a100-latest-1
     steps:
       - uses: actions/checkout@v5
