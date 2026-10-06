@@ -206,6 +206,16 @@ jobs:
           # The repro: one profiled kernel.
           python repro_nsight.py
           Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, nsight.analyze.kernel"
+          # No nsight-python at all: ncu launches a plain torch script itself.
+          $app = @(
+            'import torch',
+            'a = torch.randn(1024, 1024, device="cuda")',
+            'b = a @ a',
+            'print("simple app done", b.sum().item())'
+          )
+          Set-Content -Path simple_python_app.py -Value $app
+          ncu -f -o simple_python_app python simple_python_app.py
+          Write-Host "=== exit $LASTEXITCODE  |  ncu python simple_python_app.py"
           exit 0
       - name: "Running Tests"
         shell: pwsh
