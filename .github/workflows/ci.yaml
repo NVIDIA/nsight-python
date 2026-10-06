@@ -100,15 +100,26 @@ jobs:
             throw "Nsight Compute installer failed with exit code $($p.ExitCode)"
           }
           Remove-Item ncu_installer.msi
-          # Find the install instead of assuming the directory name. The runner
-          # is self-hosted, so older versions may still be installed alongside.
-          $ncu = Get-ChildItem "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3*\ncu.exe" -ErrorAction SilentlyContinue |
+          # Find the install instead of assuming its layout. The runner is
+          # self-hosted, so older versions may still be installed alongside.
+          $root = Get-ChildItem "C:\Program Files\NVIDIA Corporation" -Directory -Filter "Nsight Compute 2026.3*" |
             Select-Object -First 1
-          if (-not $ncu) {
+          if (-not $root) {
             Get-ChildItem "C:\Program Files\NVIDIA Corporation" -Directory | Format-Table Name
-            throw "ncu.exe for Nsight Compute 2026.3 not found"
+            throw "Nsight Compute 2026.3 install directory not found"
+          }
+          Write-Host "Install root: $($root.FullName)"
+          # The ncu launcher may be ncu.exe or ncu.bat, and not necessarily at
+          # the top level; prefer whichever is closest to the install root.
+          $found = Get-ChildItem $root.FullName -Recurse -Include ncu.exe, ncu.bat, ncu.cmd -ErrorAction SilentlyContinue
+          $found | ForEach-Object { Write-Host "  found: $($_.FullName)" }
+          $ncu = $found | Sort-Object { $_.FullName.Length } | Select-Object -First 1
+          if (-not $ncu) {
+            Get-ChildItem $root.FullName | Format-Table Mode, Name
+            throw "No ncu launcher found under $($root.FullName)"
           }
           Write-Host "Using $($ncu.FullName)"
+          & $ncu.FullName --version
           $ncu.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: "Install MSVC Redistributable (required by torch)"
         shell: pwsh
