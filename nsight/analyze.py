@@ -322,8 +322,8 @@ def kernel(
                 - ``NumRuns``: Number of runs used for aggregation
                 - ``CI95_Lower``: Lower bound of the 95% confidence interval
                 - ``CI95_Upper``: Upper bound of the 95% confidence interval
-                - ``RelativeStdDevPct``: Standard deviation as a percentage of the mean
-                - ``StableMeasurement``: Boolean indicating if the measurement is stable (low variance). The measurement is stable if ``RelativeStdDevPct`` < 2 % .
+                - ``RelativeStdDevPct``: Standard deviation as a percentage of the absolute mean
+                - ``StableMeasurement``: Nullable Boolean: true if ``RelativeStdDevPct`` < 2%, false otherwise, and ``pd.NA`` when relative variability is undefined (for example, with one valid sample or a zero mean).
                 - ``Metric``: The metrics being collected and the metrics being derived
                 - ``Unit``: Unit of measurement for the metric value (e.g., ``ns`` for nanoseconds)
                 - ``Kernel``: Name of the GPU kernel(s) launched

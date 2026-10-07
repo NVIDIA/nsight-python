@@ -9,7 +9,8 @@ nsight.analyze
    your decorated function to mark which kernel(s) to measure. See :doc:`/overview/core_concepts` for details.
 
    The decorator returns a :class:`~nsight.collection.core.ProfileResults` object containing the collected metrics.
-   See :doc:`/collection/core` for full API documentation.
+   See :doc:`/overview/profiling_results` for the result columns and
+   :doc:`/collection/core` for full API documentation.
 
 .. warning::
    Decorating a function with ``@nsight.analyze.kernel`` changes its return value.

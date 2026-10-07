@@ -11,7 +11,7 @@ Here's the absolute minimal example to get started with Nsight Python. Just add 
    import torch
    import nsight
 
-   @nsight.analyze.kernel
+   @nsight.analyze.kernel(runs=10)
    def benchmark_matmul(n):
        """
        The simplest possible benchmark.
@@ -37,5 +37,20 @@ benchmark functions should therefore return ``None``; keep any computation whose
 result you need in an undecorated helper. See :doc:`/analyze` for an example.
 
 That's it! Nsight Python will automatically profile your kernel and collect metrics. The ``to_dataframe()`` method returns the results as a pandas DataFrame for easy analysis.
+
+This example collects ten runs per configuration so the output includes
+estimates of sample variability. ``StableMeasurement`` indicates whether the
+relative standard deviation is below 2%; repeated runs do not guarantee a
+stable measurement.
+
+If you omit ``runs``, the API defaults to ``runs=1``. With only one valid
+sample, ``StdDev``, ``RelativeStdDevPct``, ``CI95_Lower``, and ``CI95_Upper``
+are ``NaN`` because sample variability cannot be estimated.
+``StableMeasurement`` is then ``pd.NA`` (displayed as ``<NA>``): stability
+cannot be determined from one sample. A zero mean also leaves
+``RelativeStdDevPct`` undefined, even with multiple runs.
+
+See :doc:`/overview/profiling_results` for the output columns, stability
+criterion, normalization, and geometric mean.
 
 For more advanced examples including parameter sweeps, custom metrics, and visualization, check out the `examples directory on GitHub <https://github.com/NVIDIA/nsight-python/tree/main/examples>`_.

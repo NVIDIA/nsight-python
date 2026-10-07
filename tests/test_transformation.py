@@ -117,3 +117,68 @@ def test_distinct_multi_element_tensor_configs_stay_distinct() -> None:
     assert result["config"].iloc[0] is config1
     assert result["config"].iloc[1] is config2
     assert result["NumRuns"].tolist() == [2, 2]
+
+
+def test_stability_distinguishes_unknown_stable_and_unstable() -> None:
+    values = [10.0, 10.0, 10.0, 10.0, 20.0, float("nan"), 10.0]
+    configs = [
+        "single",
+        "stable",
+        "stable",
+        "unstable",
+        "unstable",
+        "missing",
+        "missing",
+    ]
+    raw = _raw_df(configs)
+    raw["Value"] = values
+    result = transformation.aggregate_data(
+        raw, _one_arg, None, VerbosityLevel.SILENT
+    ).set_index("config")
+    assert str(result["StableMeasurement"].dtype) == "boolean"
+    for config in ["single", "missing"]:
+        assert pd.isna(result.loc[config, "StableMeasurement"])
+        for column in ["StdDev", "RelativeStdDevPct", "CI95_Lower", "CI95_Upper"]:
+            assert pd.isna(result.loc[config, column])
+    assert bool(result.loc["stable", "StableMeasurement"]) is True
+    assert bool(result.loc["unstable", "StableMeasurement"]) is False
+
+
+def test_stability_unknown_for_zero_mean_or_no_valid_samples() -> None:
+    raw = _raw_df(["zero", "zero", "missing", "missing"])
+    raw["Value"] = [-1.0, 1.0, float("nan"), float("nan")]
+    result = transformation.aggregate_data(
+        raw, _one_arg, None, VerbosityLevel.SILENT
+    ).set_index("config")
+    assert result["StableMeasurement"].isna().all()
+    assert result["RelativeStdDevPct"].isna().all()
+    assert result.loc["zero", "NumRuns"] == 2
+    assert pd.notna(result.loc["zero", "StdDev"])
+    assert result.loc["missing", "NumRuns"] == 0
+
+
+def test_stability_independent_of_mean_sign() -> None:
+    """Mean sign must not change relative variability or stability."""
+    raw = _raw_df(
+        [
+            "positive_stable",
+            "positive_stable",
+            "negative_stable",
+            "negative_stable",
+            "positive_unstable",
+            "positive_unstable",
+            "negative_unstable",
+            "negative_unstable",
+        ]
+    )
+    raw["Value"] = [100.0, 101.0, -100.0, -101.0, 10.0, 20.0, -10.0, -20.0]
+    result = transformation.aggregate_data(
+        raw, _one_arg, None, VerbosityLevel.SILENT
+    ).set_index("config")
+    for kind, expected_stable in [("stable", True), ("unstable", False)]:
+        positive = result.loc[f"positive_{kind}"]
+        negative = result.loc[f"negative_{kind}"]
+        assert positive["RelativeStdDevPct"] == negative["RelativeStdDevPct"]
+        assert negative["RelativeStdDevPct"] >= 0
+        assert bool(positive["StableMeasurement"]) is expected_stable
+        assert bool(negative["StableMeasurement"]) is expected_stable
