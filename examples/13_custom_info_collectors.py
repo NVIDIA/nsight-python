@@ -160,7 +160,7 @@ def ann_info(annotation_name: str, *config_args: Any) -> str:
 )
 def benchmark_with_custom_info(n: int, dtype: torch.dtype) -> None:
     """
-    Matrix multiplication benchmark with custom info collection.
+    Elementwise benchmark with custom info collection.
 
     The resulting DataFrame will include:
     - Standard columns: Annotation, Value, Metric, Kernel, GPU, Host, etc.
@@ -173,8 +173,10 @@ def benchmark_with_custom_info(n: int, dtype: torch.dtype) -> None:
     a = torch.randn(n, n, device="cuda", dtype=dtype)
     b = torch.randn(n, n, device="cuda", dtype=dtype)
 
-    with nsight.annotate("matmul"):
-        _ = a @ b
+    # Use a single elementwise kernel per annotation. Matrix multiplication can
+    # launch different numbers of kernels depending on the configuration and GPU.
+    with nsight.annotate("multiply"):
+        _ = a * b
 
     # Add another annotation to demonstrate annotation-scope collectors
     with nsight.annotate("add"):
