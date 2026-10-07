@@ -16,6 +16,7 @@ Welcome to the Nsight Python documentation!
 
    overview/introduction
    overview/quickstart
+   overview/profiling_results
    overview/core_concepts
    overview/architecture
 

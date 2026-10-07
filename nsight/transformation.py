@@ -160,11 +160,14 @@ def aggregate_data(
 
     # Compute relative standard deviation as a percentage
     agg_df["RelativeStdDevPct"] = (
-        agg_df["StdDev"] / agg_df["AvgValue"].replace(0, np.nan)
+        agg_df["StdDev"] / agg_df["AvgValue"].abs().replace(0, np.nan)
     ) * 100
 
-    # Flag measurements as stable if relative stddev is less than 2%
-    agg_df["StableMeasurement"] = agg_df["RelativeStdDevPct"] < 2.0
+    # Preserve unknown stability when relative variability is undefined.
+    relative_stddev = agg_df["RelativeStdDevPct"]
+    agg_df["StableMeasurement"] = (
+        (relative_stddev < 2.0).astype("boolean").mask(relative_stddev.isna(), pd.NA)
+    )
 
     # Flatten the multi-index columns
     agg_df.columns = [col if isinstance(col, str) else col[0] for col in agg_df.columns]
