@@ -114,38 +114,25 @@ jobs:
           # 0 = installed, 1638 = newer version already present, 3010 = success, reboot pending
           if ($p.ExitCode -notin 0, 1638, 3010) { throw "vc_redist failed: $($p.ExitCode)" }
           Remove-Item vc_redist.x64.exe
-      - name: "Install PyTorch (CUDA 13.2)"
+      # The repro below needs only cuda-core; torch, cuTile and the project
+      # itself are not installed while we chase the crash.
+      # - name: "Install PyTorch (CUDA 13.2)"
+      #   shell: pwsh
+      #   run: |
+      #     pip install torch --index-url https://download.pytorch.org/whl/cu132
+      # - name: "Install cuTile"
+      #   shell: pwsh
+      #   run: |
+      #     pip install cuda-tile[tileiras]
+      # - name: "Install project"
+      #   shell: pwsh
+      #   run: |
+      #     pip install -e ".[cu13]"
+      #     pip install pytest pytest-cov
+      - name: "Install cuda-core"
         shell: pwsh
         run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cu132
-      - name: "Install cuTile"
-        shell: pwsh
-        run: |
-          pip install cuda-tile[tileiras]
-      - name: "Install project"
-        shell: pwsh
-        run: |
-          pip install -e ".[cu13]"
-          pip install pytest pytest-cov
-      - name: "Bisect the shutdown abort"
-        shell: pwsh
-        run: |
-          # Every probe below may abort; keep going and report each exit code.
-          # 0xC0000409 (-1073740791) is the abort() we are hunting.
-          $ErrorActionPreference = 'Continue'
-          if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
-            $PSNativeCommandUseErrorActionPreference = $false
-          }
-          # Control: does loading the libraries alone reproduce it?
-          python -c "import torch, ncu_report, nsight"
-          Write-Host "=== exit $LASTEXITCODE  |  imports only, no tests"
-          # Then one test file at a time, each in its own process.
-          foreach ($f in Get-ChildItem -Path tests\test_*.py, examples\test_*.py) {
-            $rel = Resolve-Path -Relative $f.FullName
-            python -m pytest $rel -q
-            Write-Host "=== exit $LASTEXITCODE  |  $rel"
-          }
-          exit 0
+          pip install "cuda-core[cu13]"
       - name: "Enable crash dumps"
         shell: pwsh
         run: |
@@ -159,88 +146,143 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\dumps | Out-Null
           # Self-hosted runner: drop dumps left over from earlier runs.
           Remove-Item C:\dumps\* -Force -ErrorAction SilentlyContinue
-      - name: "Minimal repro outside pytest"
+      - name: "Minimal repro: NCU injection, no nsight-python"
         shell: pwsh
-        env:
-          # Step output is a pipe, so Python encodes it with the Windows code
-          # page (cp1252), which cannot represent the box-drawing characters in
-          # nsight's banner. pytest is unaffected because it captures output.
-          PYTHONIOENCODING: utf-8
+        timeout-minutes: 15
         run: |
-          # Smallest program that reproduces the shutdown abort: one profiled
-          # torch kernel, no pytest, no test suite.
+          # Drives the NCU injection library directly (in-process profiling,
+          # ncu --mode attach) with a cuda-core kernel. No torch, no nsight.
           $ErrorActionPreference = 'Continue'
           if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
             $PSNativeCommandUseErrorActionPreference = $false
           }
-          $control = @(
-            'import torch',
-            'a = torch.randn(1024, 1024, device="cuda")',
-            'b = a @ a',
-            'print("control done", b.sum().item())'
+          $repro = @'
+          import os
+          import ctypes
+          import subprocess
+          import shutil
+          from cuda.core import Device, LaunchConfig, Program, launch
+
+          BEGIN_SYMBOL = "nvInjBeginProfiling"
+          STOP_SYMBOL = "nvInjEndProfiling"
+
+          begin_profiling_symbol = None
+          end_profiling_symbol = None
+          ncu_path = None
+
+          # Parameter structs matching nvComputeInj.h
+          class ProfilingParams(ctypes.Structure):
+              _fields_ = [
+                  ("structSize", ctypes.c_size_t),
+                  ("pPriv", ctypes.c_void_p),
+              ]
+
+
+          PROFILING_PARAMS = ProfilingParams(
+              structSize=ctypes.sizeof(ProfilingParams),
+              pPriv=None,
           )
-          Set-Content -Path repro_control.py -Value $control
-          $repro = @(
-            'import torch',
-            '',
-            'import nsight',
-            '',
-            '',
-            '@nsight.analyze.kernel',
-            'def benchmark_matmul(n: int) -> None:',
-            '    a = torch.randn(n, n, device="cuda")',
-            '    b = torch.randn(n, n, device="cuda")',
-            '    with nsight.annotate("matmul"):',
-            '        _ = a @ b',
-            '',
-            '',
-            'if __name__ == "__main__":',
-            '    benchmark_matmul(1024)',
-            '    print("repro done")'
-          )
-          Set-Content -Path repro_nsight.py -Value $repro
-          Get-Content repro_nsight.py
-          # Control: same torch workload, unprofiled.
-          python repro_control.py
-          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, no profiling"
-          # The repro: one profiled kernel.
-          python repro_nsight.py
-          Write-Host "=== exit $LASTEXITCODE  |  torch on cuda, nsight.analyze.kernel"
-          # No nsight-python at all: ncu launches a plain torch script itself.
-          $app = @(
-            'import torch',
-            'a = torch.randn(1024, 1024, device="cuda")',
-            'b = a @ a',
-            'print("simple app done", b.sum().item())'
-          )
-          Set-Content -Path simple_python_app.py -Value $app
-          ncu -f -o simple_python_app python simple_python_app.py
-          Write-Host "=== exit $LASTEXITCODE  |  ncu python simple_python_app.py"
+
+          def get_injection_library_path(ncu_path: str) -> str:
+              result = subprocess.run(
+                  [ncu_path, "--list-injection-path-64"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+                  timeout=60,
+              )
+              lines = result.stdout.splitlines()
+              path = lines[0].strip()
+              return path
+
+
+          def init_injection() -> None:
+              """Load the injection library callables or set error message on failure."""
+
+              global begin_profiling_symbol
+              global ncu_path
+              global end_profiling_symbol
+
+              ncu_path = shutil.which("ncu")
+              if ncu_path is None:
+                  raise Exception("ncu not found - add ncu to your $PATH")
+              inj_dir = get_injection_library_path(ncu_path)
+
+              inj_name = "cuda-injection.dll" if os.name == "nt" else "libcuda-injection.so"
+              inj_lib_path = os.path.join(inj_dir, inj_name)
+              os.environ["NVTX_INJECTION64_PATH"] = inj_lib_path
+              os.environ["NV_COMPUTE_PROFILER_PERFWORKS_DIR"] = inj_dir
+              os.environ["NV_COMPUTE_PROFILER_IN_PROCESS"] = "1"
+
+              lib = ctypes.CDLL(inj_lib_path)
+              if lib is None:
+                  return
+
+              begin_profiling_symbol = getattr(lib, BEGIN_SYMBOL, None)
+              end_profiling_symbol = getattr(lib, STOP_SYMBOL, None)
+              if begin_profiling_symbol is None or end_profiling_symbol is None:
+                  return
+
+          if __name__ == "__main__":
+
+              print(f"PID: {os.getpid()}")
+
+              init_injection()
+
+              ret_code = begin_profiling_symbol(ctypes.byref(PROFILING_PARAMS))
+              ncu_command = f'"{ncu_path}" --mode attach --metrics gpu__time_duration.sum -f -o report'
+              ncu_process = subprocess.Popen(ncu_command, shell=True)
+
+              src = r"""
+          extern "C" __global__ void dummy_kernel() {}
+          """
+
+              dev = Device()
+              dev.set_current()
+              stream = dev.create_stream()
+
+              mod = Program(src, "c++").compile("cubin")
+              kernel = mod.get_kernel("dummy_kernel")
+              cfg = LaunchConfig(grid=1, block=1)
+              launch(stream, cfg, kernel)
+              launch(stream, cfg, kernel)
+              dev.sync()
+
+              ret_code = end_profiling_symbol(ctypes.byref(PROFILING_PARAMS))
+
+              return_code = ncu_process.wait()
+              if return_code != 0:
+                  print(f"ncu process exit code = {return_code}")
+          '@
+          Set-Content -Path ncu_injection_repro.py -Value $repro
+          python ncu_injection_repro.py
+          Write-Host "=== exit $LASTEXITCODE  |  ncu injection repro"
           exit 0
-      - name: "Running Tests"
-        shell: pwsh
-        env:
-          # On Windows matplotlib defaults to the TkAgg backend, and tkinter
-          # is not properly configured on the runner. This is a headless
-          # runner and no GUI is required, so force the non-interactive
-          # backend. Headless Linux falls back to Agg already.
-          MPLBACKEND: Agg
-          # pytest arms faulthandler only for the duration of the session and
-          # removes it again in pytest_unconfigure, so a native crash during
-          # interpreter shutdown leaves no trace. Arm it from interpreter
-          # startup instead. Costs nothing unless the process actually faults.
-          PYTHONFAULTHANDLER: 1
-        run: |
-          python -m pytest -v -rA --debug=pytestdebug.log --junitxml=report.xml
-          # Capture pytest's own exit code before anything else runs, so the
-          # step still reports it after printing the debug log.
-          $code = $LASTEXITCODE
-          Write-Host "=== pytest exit code: $code ==="
-          if (Test-Path pytestdebug.log) {
-            Write-Host "=== pytestdebug.log ==="
-            Get-Content pytestdebug.log
-          }
-          exit $code
+      # Disabled while we collect a crash dump for the injection repro above.
+      # - name: "Running Tests"
+      #   shell: pwsh
+      #   env:
+      #     # On Windows matplotlib defaults to the TkAgg backend, and tkinter
+      #     # is not properly configured on the runner. This is a headless
+      #     # runner and no GUI is required, so force the non-interactive
+      #     # backend. Headless Linux falls back to Agg already.
+      #     MPLBACKEND: Agg
+      #     # pytest arms faulthandler only for the duration of the session and
+      #     # removes it again in pytest_unconfigure, so a native crash during
+      #     # interpreter shutdown leaves no trace. Arm it from interpreter
+      #     # startup instead. Costs nothing unless the process actually faults.
+      #     PYTHONFAULTHANDLER: 1
+      #   run: |
+      #     python -m pytest -v -rA --debug=pytestdebug.log --junitxml=report.xml
+      #     # Capture pytest's own exit code before anything else runs, so the
+      #     # step still reports it after printing the debug log.
+      #     $code = $LASTEXITCODE
+      #     Write-Host "=== pytest exit code: $code ==="
+      #     if (Test-Path pytestdebug.log) {
+      #       Write-Host "=== pytestdebug.log ==="
+      #       Get-Content pytestdebug.log
+      #     }
+      #     exit $code
       - name: "List crash dumps"
         if: always()
         shell: pwsh
