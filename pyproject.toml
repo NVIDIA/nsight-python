@@ -119,3 +119,7 @@ template = "test"
 [tool.hatch.envs.test_cu13]
 features = ["cu13", "cupti"]
 template = "test"
+
+# The CUPTI backend is not supported on Windows.
+[tool.hatch.envs.test_cu13.overrides]
+platform.windows.set-features = ["cu13"]

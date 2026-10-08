@@ -102,10 +102,14 @@ jobs:
           curl.exe -L -o vc_redist.x64.exe https://aka.ms/vc14/vc_redist.x64.exe
           Start-Process vc_redist.x64.exe -Wait -ArgumentList '/install /quiet /norestart'
           Remove-Item vc_redist.x64.exe
-      - name: "Install PyTorch (CUDA 13.2)"
+      - name: "Create hatch test environment"
         shell: pwsh
         run: |
           pip install hatch
+          hatch env create test_cu13
+      - name: "Install PyTorch (CUDA 13.2)"
+        shell: pwsh
+        run: |
           hatch run test_cu13:pip install torch --index-url https://download.pytorch.org/whl/cu132
       - name: "Install cuTile"
         shell: pwsh
@@ -120,5 +124,4 @@ jobs:
           # backend. Headless Linux falls back to Agg already.
           MPLBACKEND: Agg
         run: |
-          pip install hatch
           hatch run test_cu13:run
