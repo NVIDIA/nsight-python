@@ -124,4 +124,14 @@ jobs:
           # backend. Headless Linux falls back to Agg already.
           MPLBACKEND: Agg
         run: |
-          hatch run test_cu13:run
+          # WAR for a known NCU issue on Windows: the Python process aborts
+          # with 0xC0000409 (FAIL_FAST_FATAL_APP_EXIT) at exit, after pytest
+          # has finished. Save pytest's own exit code before that happens and
+          # report it instead.
+          hatch run test_cu13:python -c "import pytest, sys; rc = int(pytest.main(['-v', '--junitxml=report.xml'])); open('pytest_rc.txt', 'w').write(str(rc)); sys.exit(rc)"
+          $code = $LASTEXITCODE
+          if ($code -eq 0xC0000409 -and (Test-Path pytest_rc.txt)) {
+            $code = [int](Get-Content pytest_rc.txt)
+            Write-Host "Ignoring exit code 0xC0000409 (known NCU issue); pytest exit code: $code"
+          }
+          exit $code
