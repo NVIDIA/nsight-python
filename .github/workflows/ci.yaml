@@ -128,6 +128,12 @@ jobs:
         # WAR for a known NCU issue on Windows: the Python process aborts
         # with 0xC0000409 (FAIL_FAST_FATAL_APP_EXIT) at exit, after pytest
         # has finished. Flush the output and exit with os._exit to skip
-        # Python's shutdown, so pytest's own exit code is reported.
+        # Python's shutdown, so pytest's own exit code is reported. Activate
+        # the test_cu13 hatch environment and run python directly, since
+        # `hatch run` turns the 0xC0000409 exit code into -1.
         run: |
-          hatch run test_cu13:python -c "import os, sys, pytest; rc = int(pytest.main(['-v', '--junitxml=report.xml'])); sys.stdout.flush(); sys.stderr.flush(); os._exit(rc)"
+          . (Join-Path (hatch env find test_cu13) 'Scripts\activate.ps1')
+          python -c "import os, sys, pytest; rc = int(pytest.main(['-v', '--junitxml=report.xml'])); sys.stdout.flush(); sys.stderr.flush(); os._exit(rc)"
+          $code = $LASTEXITCODE
+          Write-Host ("python exit code: {0} (0x{0:X8})" -f $code)
+          exit $code
