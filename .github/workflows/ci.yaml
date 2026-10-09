@@ -127,13 +127,18 @@ jobs:
           MPLBACKEND: Agg
         # WAR for a known NCU issue on Windows: the Python process aborts
         # with 0xC0000409 (FAIL_FAST_FATAL_APP_EXIT) at exit, after pytest
-        # has finished. Flush the output and exit with os._exit to skip
-        # Python's shutdown, so pytest's own exit code is reported. Activate
-        # the test_cu13 hatch environment and run python directly, since
-        # `hatch run` turns the 0xC0000409 exit code into -1.
+        # has finished. Save pytest's own exit code before that happens and
+        # report it instead. Activate the test_cu13 hatch environment and run
+        # python directly rather than through `hatch run`: before Python
+        # 3.13.1, passing the 0xC0000409 exit code on through sys.exit() on
+        # Windows exits with -1 instead (https://github.com/python/cpython/pull/125896).
         run: |
           . (Join-Path (hatch env find test_cu13) 'Scripts\activate.ps1')
-          python -c "import os, sys, pytest; rc = int(pytest.main(['-v', '--junitxml=report.xml'])); sys.stdout.flush(); sys.stderr.flush(); os._exit(rc)"
+          python -c "import pytest, sys; rc = int(pytest.main(['-v', '--junitxml=report.xml'])); open('pytest_rc.txt', 'w').write(str(rc)); sys.exit(rc)"
           $code = $LASTEXITCODE
           Write-Host ("python exit code: {0} (0x{0:X8})" -f $code)
+          if ($code -eq 0xC0000409 -and (Test-Path pytest_rc.txt)) {
+            $code = [int](Get-Content pytest_rc.txt)
+            Write-Host "Ignoring exit code 0xC0000409 (known NCU issue); pytest exit code: $code"
+          }
           exit $code
