@@ -17,7 +17,7 @@ from typing import Any, Literal, Mapping
 import numpy as np
 import pandas as pd
 
-from nsight import annotation, exceptions, thermovision, transformation, utils
+from nsight import _session, annotation, exceptions, thermovision, transformation, utils
 from nsight.utils import VerbosityLevel
 
 NormalizedInfoCollector = tuple[str, Callable[..., Any], str]
@@ -341,6 +341,7 @@ def _save_collected_info(
     return True
 
 
+@_session.capture
 def run_profile_session(
     func: Callable[..., None],
     configs: list[Sequence[Any]],
@@ -534,7 +535,8 @@ def run_profile_session(
             # Run the function with the config, splitting into positional
             # and keyword-only args based on the function signature
             pos_args, kw_args = _bind_config_to_signature(sig, c)
-            result = func(*pos_args, **kw_args)  # type: ignore[func-returns-value]
+            with _session.run(curr_config - 1, i):
+                result = func(*pos_args, **kw_args)  # type: ignore[func-returns-value]
             if result is not None:
                 show_return_type_warning = True
 

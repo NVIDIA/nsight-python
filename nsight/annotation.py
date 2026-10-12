@@ -9,7 +9,7 @@ from typing import Any
 import nvtx
 
 import nsight.utils as utils
-from nsight import info_collector
+from nsight import _session, info_collector
 from nsight.exceptions import CUDA_CORE_UNAVAILABLE_MSG
 
 # Thread-local storage for tracking annotations
@@ -161,11 +161,12 @@ class annotate:
                 f"Each annotation must have a unique name."
             )
 
+        marker_name = _session.marker_name(self.name)
         add_active_annotation(self.name)
         _set_in_annotation(True)
         # Collect annotation-scope information
         info_collector.collect_for_annotation(self.name)
-        self._range_id = nvtx.start_range(message=self.name, domain=utils.NVTX_DOMAIN)
+        self._range_id = nvtx.start_range(message=marker_name, domain=utils.NVTX_DOMAIN)
         return self
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:

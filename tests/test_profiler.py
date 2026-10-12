@@ -501,7 +501,7 @@ def test_multiple_kernels_per_run() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Varying kernels per run tests (currently unsupported)
+# Varying kernels per run tests
 # ----------------------------------------------------------------------------
 
 
@@ -520,9 +520,8 @@ def varying_multiple_kernels_per_run(flag: bool) -> None:
             _ = a + b
 
 
-@pytest.mark.skip("don't yet support varying number of kernels per run")  # type: ignore[untyped-decorator]
 def test_varying_multiple_kernels_per_run() -> None:
-    """Test kernel with varying number of operations per run (currently unsupported)."""
+    """Test kernel with varying number of operations per run."""
     varying_multiple_kernels_per_run()
 
 
@@ -1623,3 +1622,25 @@ def test_tuple_typed_function_args_multiple_metrics() -> None:
             10,
             20,
         ), f"Row {idx}: pair should be (10, 20), got {df['pair'].iloc[idx]}"
+
+
+@pytest.mark.parametrize("counts", [(2, 3), (2, 4)])  # type: ignore[untyped-decorator]
+def test_variable_kernel_counts_have_correct_samples(counts: tuple[int, int]) -> None:
+    @nsight.analyze.kernel(
+        configs=counts,
+        runs=3,
+        thermal_mode="off",
+        combine_kernel_metrics=lambda a, b: a + b,
+    )
+    def variable_count(count: int) -> None:
+        a = torch.ones(256, device="cuda")
+        b = torch.empty_like(a)
+        with nsight.annotate("total"):
+            for _ in range(count):
+                torch.add(a, a, out=b)
+
+    df = variable_count().to_dataframe().sort_values("count")
+    assert df["count"].tolist() == list(counts)
+    assert df["NumRuns"].tolist() == [3, 3]
+    assert df["Annotation"].tolist() == ["total", "total"]
+    assert (df["Kernel"].str.count(r"\|") + 1).tolist() == list(counts)
