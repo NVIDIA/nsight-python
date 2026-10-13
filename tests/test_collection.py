@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib.metadata
 import os
+import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nsight import VerbosityLevel, collection
+from nsight import VerbosityLevel, collection, exceptions
 from nsight.collection import cupti as cupti_collection
 
 
@@ -174,3 +176,36 @@ def test_attribute_kernels_pairs_sequential_ranges() -> None:
         ("region_1", "k1", 2),
         ("region_2", "k2", 3),
     ]
+
+
+@pytest.mark.parametrize("report_version", [(2026, 2), (2026, 3), (2027, 1)])  # type: ignore[untyped-decorator]
+def test_check_ncu_report_version_accepts_same_or_newer(
+    report_version: tuple[int, ...],
+) -> None:
+    collection.ncu.check_ncu_report_version((2026, 2, 1, 0), report_version)
+
+
+@pytest.mark.parametrize("report_version", [(2026, 1), (2025, 3)])  # type: ignore[untyped-decorator]
+def test_check_ncu_report_version_rejects_older(
+    report_version: tuple[int, ...],
+) -> None:
+    with pytest.raises(exceptions.ProfilerException, match=re.escape("2026.2.1.0")):
+        collection.ncu.check_ncu_report_version((2026, 2, 1, 0), report_version)
+
+
+def test_get_ncu_report_version_parses_major_and_minor() -> None:
+    with patch("importlib.metadata.version", return_value="2026.2.0"):
+        assert collection.ncu.get_ncu_report_version() == (2026, 2)
+
+
+def test_get_ncu_report_version_returns_none_if_not_installed() -> None:
+    with patch(
+        "importlib.metadata.version",
+        side_effect=importlib.metadata.PackageNotFoundError,
+    ):
+        assert collection.ncu.get_ncu_report_version() is None
+
+
+def test_get_ncu_report_version_returns_none_if_unparseable() -> None:
+    with patch("importlib.metadata.version", return_value="unknown"):
+        assert collection.ncu.get_ncu_report_version() is None
