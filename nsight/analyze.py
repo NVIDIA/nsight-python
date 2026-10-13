@@ -586,7 +586,7 @@ def plot(
     ylabel: str | None = None,
     annotate_points: bool = False,
     show_aggregate: str | None = None,
-    plot_type: str = "line",
+    plot_type: Literal["line", "bar"] = "line",
     plot_width: int = 6,
     plot_height: int = 4,
     row_panels: Sequence[str] | None = None,
@@ -652,6 +652,11 @@ def plot(
         variant_fields: List of config fields to use as variant fields (lines).
         variant_annotations: List of annotated range names for which to apply variant splitting. The provided strings must each match one of the names defined using nsight.annotate.
     """
+    # Reject illegal values now rather than when the decorated function is
+    # first called.
+    if plot_type not in ("line", "bar"):
+        raise ValueError(f"Invalid plot_type {plot_type!r}. Expected 'line' or 'bar'.")
+
     show_avg = show_aggregate == "avg"
     show_geomean = show_aggregate == "geomean"
 

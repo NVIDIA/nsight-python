@@ -834,6 +834,24 @@ def test_parameter_cache_control(
 
 
 # ============================================================================
+# Plot type tests
+# ============================================================================
+
+
+@pytest.mark.parametrize("plot_type", ["line", "bar", "invalid_value"])  # type: ignore[untyped-decorator]
+def test_parameter_plot_type(
+    plot_type: Literal["line", "bar", "invalid_value"],
+) -> None:
+    """Test that nsight.analyze.plot validates plot_type when it is called."""
+
+    if plot_type == "invalid_value":
+        with pytest.raises(ValueError, match="Invalid plot_type"):
+            nsight.analyze.plot(plot_type=plot_type)  # type: ignore[arg-type]
+    else:
+        nsight.analyze.plot(plot_type=plot_type)
+
+
+# ============================================================================
 # Thermal control tests
 # ============================================================================
 
