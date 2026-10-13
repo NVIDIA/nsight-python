@@ -178,14 +178,14 @@ def main() -> None:
     # Run single-metric benchmark
     print("Running TFLOPs benchmark (scalar return pattern)...")
     benchmark_tflops()
-    print("✓ TFLOPs benchmark complete! Check '03_custom_metrics_tflops.png'\n")
+    print("TFLOPs benchmark complete! Check '03_custom_metrics_tflops.png'\n")
 
     # Run multi-metric benchmark
     print("Running combined benchmark (dictionary return pattern)...")
     result = benchmark_tflops_and_arithmetic_intensity()
     print(result.to_dataframe())
 
-    print("\n✓ TFLOPs and Arithmetic Intensity benchmark complete! ", end="")
+    print("\nTFLOPs and Arithmetic Intensity benchmark complete! ", end="")
     print("Check '03_custom_metrics_arith_intensity.png'")
 
 

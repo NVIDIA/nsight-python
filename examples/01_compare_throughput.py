@@ -61,7 +61,7 @@ def benchmark_matmul_throughput(n: int) -> None:
 def main() -> None:
     result = benchmark_matmul_throughput(2048)
     print(result.to_dataframe())
-    print("✓ Benchmark complete! Check '01_compare_throughput.png'")
+    print("Benchmark complete! Check '01_compare_throughput.png'")
     print("\nTip: Run 'ncu --query-metrics' to see all available metrics!")
 
 

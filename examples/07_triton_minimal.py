@@ -130,7 +130,7 @@ def benchmark_triton_variants(n: int, block_size: int) -> None:
 
 def main() -> None:
     benchmark_triton_variants()
-    print("✓ Triton benchmark complete! Check '07_triton_minimal.png'")
+    print("Triton benchmark complete! Check '07_triton_minimal.png'")
     print("\nWhat this example demonstrates:")
     print("- normalize_against='torch' normalizes metrics against PyTorch baseline")
     print("- derive_metric=speedup computes speedup as reciprocal (1 / normalized)")

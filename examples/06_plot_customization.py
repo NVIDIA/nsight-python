@@ -85,11 +85,11 @@ def benchmark_custom_plot(n: int) -> None:
 def main() -> None:
     print("Running bar chart example...")
     benchmark_bar_chart()
-    print("✓ Bar chart saved to '06_bar_chart.png'")
+    print("Bar chart saved to '06_bar_chart.png'")
 
     print("\nRunning custom plot example...")
     benchmark_custom_plot()
-    print("✓ Custom plot saved to '06_custom_plot.png'")
+    print("Custom plot saved to '06_custom_plot.png'")
 
 
 if __name__ == "__main__":

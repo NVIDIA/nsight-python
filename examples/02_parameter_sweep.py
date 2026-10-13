@@ -39,7 +39,7 @@ def main() -> None:
     # notice no n parameter is passed, it is passed in the configs list instead
     result = benchmark_matmul_sizes()
     print(result.to_dataframe())
-    print("✓ Benchmark complete! Check '02_parameter_sweep.png'")
+    print("Benchmark complete! Check '02_parameter_sweep.png'")
 
 
 if __name__ == "__main__":
