@@ -169,3 +169,23 @@ def test_cupti_keeps_execution_labels() -> None:
         combine_kernel_metrics=lambda a, b: a + b,
     )
     assert df.Value.tolist() == [2, 3]
+
+
+def test_scalar_generator_configs_keep_values_aligned() -> None:
+    # Collectors materialize generators without normalizing each scalar.
+    configs: Any = list(x for x in (10, 20))
+    df = extraction.extract_df_from_data(
+        {"a": [action(1)], "b": [action(2)]},
+        ["time"],
+        configs,
+        1,
+        benchmark,
+        None,
+        utils.VerbosityLevel.SILENT,
+        invocations={
+            "a": _session.Invocation("public", 0, 0),
+            "b": _session.Invocation("public", 1, 0),
+        },
+    )
+    assert df["size"].tolist() == [10, 20]
+    assert df.Value.tolist() == [1, 2]

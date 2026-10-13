@@ -153,48 +153,28 @@ def _group_samples(
     profiling_data: dict[str, list[utils.ActionData]],
     configs: List[Tuple[Any, ...]],
     iterations: int,
-    invocations: Mapping[str, _session.Invocation] | None,
+    invocations: Mapping[str, _session.Invocation],
 ) -> dict[str, list[Sample]]:
     groups: dict[str, list[Sample]] = {}
-    if invocations is not None:
-        unknown = profiling_data.keys() - invocations.keys()
-        if unknown:
-            raise RuntimeError(
-                f"Profile contains unknown annotation executions: {sorted(unknown)}"
-            )
-        if not invocations:
-            raise RuntimeError("No annotations were executed during profiling")
-        for marker, invocation in invocations.items():
-            kernels = profiling_data.get(marker, [])
-            if not kernels:
-                raise RuntimeError(
-                    f"No kernels were profiled for annotation {invocation.annotation!r}, "
-                    f"config {invocation.config_index}, run {invocation.run_index} "
-                    "(the region may be empty or all kernels may have been filtered)"
-                )
-            idx = invocation.config_index * iterations + invocation.run_index
-            groups.setdefault(invocation.annotation, []).append(
-                (idx, configs[invocation.config_index], kernels)
-            )
-        return groups
-
-    # Compatibility for direct callers reading older, untagged reports. Live
-    # collectors always supply identities and never use positional guessing.
-    repeated = [(c,) if is_scalar(c) else c for c in configs for _ in range(iterations)]
-    for annotation, kernels in profiling_data.items():
+    unknown = profiling_data.keys() - invocations.keys()
+    if unknown:
+        raise RuntimeError(
+            f"Profile contains unknown annotation executions: {sorted(unknown)}"
+        )
+    if not invocations:
+        raise RuntimeError("No annotations were executed during profiling")
+    for marker, invocation in invocations.items():
+        kernels = profiling_data.get(marker, [])
         if not kernels:
-            raise RuntimeError("No kernels were profiled")
-        if not repeated or len(kernels) % len(repeated):
             raise RuntimeError(
-                "Expect same number of kernels per run in an untagged report"
+                f"No kernels were profiled for annotation {invocation.annotation!r}, "
+                f"config {invocation.config_index}, run {invocation.run_index} "
+                "(the region may be empty or all kernels may have been filtered)"
             )
-        count = len(kernels) // len(repeated)
-        groups[annotation] = [
-            (i, c, list(batch))
-            for i, (c, batch) in enumerate(
-                zip(repeated, utils.batched(kernels, count), strict=True)
-            )
-        ]
+        idx = invocation.config_index * iterations + invocation.run_index
+        config = configs[invocation.config_index]
+        conf = (config,) if is_scalar(config) else config
+        groups.setdefault(invocation.annotation, []).append((idx, conf, kernels))
     return groups
 
 
@@ -211,7 +191,8 @@ def extract_df_from_data(
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
     info_prefix: str | None = None,
-    invocations: Mapping[str, _session.Invocation] | None = None,
+    *,
+    invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
     """
     Aggregates raw per-annotation measurements (from either tool) into a pandas
@@ -225,6 +206,7 @@ def extract_df_from_data(
         func: Function representing the kernel launch with parameter signature.
         derive_metric: Function to transform the raw metric values with config values.
         verbosity: Controls display of extraction progress.
+        invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
 
     Returns:
@@ -532,7 +514,8 @@ def extract_df_from_report(
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
     info_prefix: str | None = None,
-    invocations: Mapping[str, _session.Invocation] | None = None,
+    *,
+    invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
     """
     Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
@@ -545,6 +528,7 @@ def extract_df_from_report(
         func: Function representing the kernel launch with parameter signature.
         derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
+        invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
         verbosity: Controls display of extraction progress.
 
@@ -582,5 +566,5 @@ def extract_df_from_report(
         config_scope_columns,
         annotation_scope_columns,
         info_prefix,
-        invocations,
+        invocations=invocations,
     )
