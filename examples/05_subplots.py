@@ -64,7 +64,7 @@ def benchmark_with_subplots(n: int, dtype: torch.dtype, transpose: bool) -> None
 def main() -> None:
     result = benchmark_with_subplots()
     print(result.to_dataframe())
-    print("✓ Subplot benchmark complete! Check '05_subplots.png'")
+    print("Subplot benchmark complete! Check '05_subplots.png'")
 
 
 if __name__ == "__main__":

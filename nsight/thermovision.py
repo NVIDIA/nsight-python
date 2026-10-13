@@ -252,7 +252,7 @@ class ThermalController:
         temperature = self._get_gpu_temp()
         if self.verbose:
             print(
-                f"\n[Thermovision] GPU hot: {temperature}°C (thermal headroom: {tlimit}°C)"
+                f"\n[Thermovision] GPU hot: {temperature}C (thermal headroom: {tlimit}C)"
             )
 
         # Adaptive adjustment
@@ -303,7 +303,7 @@ class ThermalController:
         temperature = self._get_gpu_temp()
         if self.verbose:
             print(
-                f"[Thermovision] Waited {wait_time:.1f}s → Cooled to {temperature}°C (thermal headroom: {tlimit}°C)\n"
+                f"[Thermovision] Waited {wait_time:.1f}s -> Cooled to {temperature}C (thermal headroom: {tlimit}C)\n"
             )
 
     def _handle_cooling_timeout(self, tlimit: int) -> None:
@@ -318,7 +318,7 @@ class ThermalController:
         if self.adaptive_mode:
             if self.verbose:
                 print(
-                    f"## Adaptive mode: decreasing thermal_cont to {self.thermal_cont - ADJUSTMENT_STEP}°C"
+                    f"## Adaptive mode: decreasing thermal_cont to {self.thermal_cont - ADJUSTMENT_STEP}C"
                 )
             self.thermal_cont = max(
                 self.thermal_cont - ADJUSTMENT_STEP, MIN_THERMAL_CONT

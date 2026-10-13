@@ -119,7 +119,7 @@ def benchmark_cutile(n: int) -> None:
 
 def main() -> None:
     benchmark_cutile()
-    print("✓ cuTile benchmark complete! Check '12_cutile.png'")
+    print("cuTile benchmark complete! Check '12_cutile.png'")
     print("\nWhat this example demonstrates:")
     print("\nPlotting cuTile and PyTorch kernel times for different problem sizes!")
 

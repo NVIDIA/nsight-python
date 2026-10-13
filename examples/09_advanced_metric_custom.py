@@ -99,7 +99,7 @@ def benchmark_avg_insts(n: int) -> None:
 def main() -> None:
     result = benchmark_avg_insts()
     print(result.to_dataframe())
-    print("✓ Avg Insts benchmark complete! Check '09_advanced_metric_custom.png'")
+    print("Avg Insts benchmark complete! Check '09_advanced_metric_custom.png'")
 
 
 if __name__ == "__main__":

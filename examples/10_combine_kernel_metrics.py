@@ -56,7 +56,7 @@ def benchmark_multiple_kernels(n: int) -> None:
 def main() -> None:
     result = benchmark_multiple_kernels()
     print(result.to_dataframe())
-    print("\n✓ Total Cycles benchmark complete! Check '10_combine_kernel_metrics.png'")
+    print("\nTotal Cycles benchmark complete! Check '10_combine_kernel_metrics.png'")
 
 
 if __name__ == "__main__":

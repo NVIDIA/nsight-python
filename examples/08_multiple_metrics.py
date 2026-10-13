@@ -57,20 +57,20 @@ def main() -> None:
     print(df)
 
     unique_metrics = df["Metric"].unique()
-    print(f"\n✓ Collected {len(unique_metrics)} metrics:")
+    print(f"\n- Collected {len(unique_metrics)} metrics:")
     for metric in unique_metrics:
         print(f"  - {metric}")
 
-    print("\n✓ Sample data:")
+    print("\n- Sample data:")
     print(df[["Annotation", "n", "Metric", "AvgValue"]].to_string(index=False))
 
     print("\n" + "=" * 60)
     print("IMPORTANT: @plot decorator limitation")
     print("=" * 60)
     print("When multiple metrics are collected:")
-    print("  ✓ All metrics are collected in a single ProfileResults object")
-    print("  ✓ DataFrame has 'Metric' column to distinguish them")
-    print("  ✗ @nsight.analyze.plot decorator will RAISE AN ERROR")
+    print("  - All metrics are collected in a single ProfileResults object")
+    print("  - DataFrame has 'Metric' column to distinguish them")
+    print("  - @nsight.analyze.plot decorator will RAISE AN ERROR")
     print("    Why? @plot can only visualize one metric at a time.")
     print("    Tip: Use separate @kernel functions for each metric or use")
     print("         'derive_metric' to compute custom values.")
