@@ -131,8 +131,9 @@ def _attribute_kernels(
         One ``(annotation, kernel_name, duration_ns)`` tuple per attributed
         kernel, ready to hand to ``add_profiling_data``. Ordered by launch
         time, which is the order the profiling loop ran in and therefore the
-        order extraction expects: it reads this list positionally to decide
-        which (config, run) each measurement belongs to.
+        order in which each group must be reduced. During a profile session,
+        annotation names carry private execution identities, so grouping does
+        not depend on positions in this list.
 
         Kernels that cannot be attributed are left out entirely: a launch
         made outside any annotation, or one whose range never closed.
@@ -232,6 +233,10 @@ class CUPTICollector(core.NsightCollector):
             if we profile runtime and want to sum the times of all kernels we can specify
             ``combine_kernel_metrics = lambda x, y: x + y``. The function should take
             two arguments and return a single value. Default: ``None``.
+            Kernels are combined independently for each annotation execution.
+            The number of kernels may vary across configurations and runs.
+            An executed annotation with no remaining kernels (including after
+            filtering) raises an error; skipped annotations produce no sample.
     """
 
     def __init__(
@@ -365,7 +370,7 @@ class CUPTICollector(core.NsightCollector):
             for cbid in _LAUNCH_CBIDS:
                 cupti.activity_enable_driver_api(cbid, 1)
 
-            core.run_profile_session(
+            invocations = core.run_profile_session(
                 func,
                 configs_list,
                 settings.runs,
@@ -444,6 +449,7 @@ class CUPTICollector(core.NsightCollector):
             config_scope_columns,
             annotation_scope_columns,
             info_prefix=settings.output_prefix or "",
+            invocations=invocations,
         )
 
         return df
