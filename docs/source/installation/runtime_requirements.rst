@@ -4,7 +4,7 @@
 Runtime Requirements
 =====================
 
-* **NVIDIA Nsight Compute from CUDA Toolkit 13.3 Update 1 or later**: nsight-python uses the NVIDIA Nsight Compute CLI (ncu 2026.2.1+). Ensure ``ncu`` is installed and available on the system path.
+* **NVIDIA Nsight Compute from CUDA Toolkit 13.3 Update 1 or later**: nsight-python uses the NVIDIA Nsight Compute CLI (ncu 2026.2.1+). Ensure ``ncu`` is installed and available on the system path. The installed ``ncu-report`` package must be at least as new (by major and minor version) as this NVIDIA Nsight Compute.
 
 * **NVIDIA CUPTI**: The :ref:`CUPTI backend <tools-cupti>` requires the CUPTI Library from CUDA 13.4 or greater. Installing Nsight Python with the ``cupti`` extra (see :doc:`installation_from_pypi`) installs ``nvidia-cuda-cupti``, which provides this library. See `CUPTI Compatibility and Requirements <https://docs.nvidia.com/cupti/main/main.html#cupti-compatibility-and-requirements>`_ for driver compatibility and other setup requirements.
 
