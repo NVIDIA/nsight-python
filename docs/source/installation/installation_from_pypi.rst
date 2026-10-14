@@ -44,3 +44,7 @@ This is an optional dependency that enables low-overhead collection of kernel ti
 .. code-block:: bash
 
     pip install nsight-python[cupti]
+
+.. note::
+
+    The CUPTI backend is not supported on Windows.
