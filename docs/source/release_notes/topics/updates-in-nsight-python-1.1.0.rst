@@ -46,5 +46,5 @@ Enhancements
 Fixes
 -----
 
-- **Fixed aggregation failures with tensor-valued config parameters**
+- Fixed aggregation failures with tensor-valued config parameters
   (`#63 <https://github.com/NVIDIA/nsight-python/pull/63>`_).
