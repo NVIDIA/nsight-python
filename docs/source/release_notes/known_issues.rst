@@ -9,3 +9,4 @@ Known Issues
 - Nested annotations (using ``nsight.annotate`` within another ``nsight.annotate`` context) are not supported. nsight-python errors out when nested annotations are used.
 - ``*args`` and ``**kwargs`` in decorated function signatures are tolerated but ignored — they will always be empty and will not appear in the profiling output.
 - Calling :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`-decorated functions from multiple threads is not supported, whether the threads run sequentially or concurrently.
+- Each annotation must launch the same number of kernels across configurations and repeated runs, even with ``combine_kernel_metrics``. Different counts may cause an error or incorrect results. Profile configurations separately when their kernel counts differ.

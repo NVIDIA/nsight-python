@@ -37,8 +37,14 @@ Enhancements
 - **Added Windows compatibility**
   (fixes `#58 <https://github.com/NVIDIA/nsight-python/issues/58>`_).
 
+- **Improved handling of insufficient profiling samples**:
+  Measurement stability is reported as ``None`` when it cannot be determined,
+  and undefined statistics are reported as ``NaN``. Relative standard deviation
+  now uses the absolute mean
+  (`#73 <https://github.com/NVIDIA/nsight-python/pull/73>`_).
+
 Fixes
 -----
 
-- **Fixed aggregation failures with tensor-valued config parameters**
+- Fixed aggregation failures with tensor-valued config parameters
   (`#63 <https://github.com/NVIDIA/nsight-python/pull/63>`_).
