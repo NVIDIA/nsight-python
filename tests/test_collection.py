@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.metadata
+import io
 import os
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
-from nsight import VerbosityLevel, collection, exceptions
+from nsight import VerbosityLevel, collection, exceptions, extraction, utils
 from nsight.collection import cupti as cupti_collection
 
 
@@ -209,3 +211,69 @@ def test_get_ncu_report_version_returns_none_if_not_installed() -> None:
 def test_get_ncu_report_version_returns_none_if_unparseable() -> None:
     with patch("importlib.metadata.version", return_value="unknown"):
         assert collection.ncu.get_ncu_report_version() is None
+
+
+def _action_data(name: str) -> utils.ActionData:
+    return utils.ActionData(
+        name=name,
+        values=np.array([1.0]),
+        compute_clock=1,
+        memory_clock=1,
+        gpu="gpu",
+        units=["ns"],
+    )
+
+
+def _profiled_func(n: int) -> None:
+    pass
+
+
+def test_extract_df_from_data_raises_if_no_kernel_was_attributed() -> None:
+    # e.g. the CUPTI tool attributing no launch to any annotation
+    with pytest.raises(RuntimeError, match="No kernels were profiled"):
+        extraction.extract_df_from_data(
+            {},
+            ["gpu__time_duration.sum"],
+            [(1,)],
+            1,
+            _profiled_func,
+            None,
+            VerbosityLevel.SILENT,
+        )
+
+
+def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
+    profiling_data = {"autotuned": [_action_data("my_kernel")] * 6}
+    with pytest.raises(RuntimeError) as exc_info:
+        extraction.extract_df_from_data(
+            profiling_data,
+            ["gpu__time_duration.sum"],
+            [(1,)],
+            2,
+            _profiled_func,
+            None,
+            VerbosityLevel.SILENT,
+        )
+    message = str(exc_info.value)
+    assert "More than one (6 in 2 runs, 3 per run on average) kernel" in message
+    assert "autotunes" in message
+
+
+def test_extract_data_from_report_explains_missing_report(tmp_path: Any) -> None:
+    report_path = os.path.join(tmp_path, "missing.ncu-rep")
+    with pytest.raises(
+        exceptions.ProfilerException, match="no kernel was launched inside any"
+    ):
+        extraction.extract_data_from_report(
+            report_path,
+            ["gpu__time_duration.sum"],
+            _profiled_func,
+            None,
+            VerbosityLevel.SILENT,
+        )
+
+
+def test_stdout_is_terminal_false_when_redirected() -> None:
+    with patch("sys.stdout", io.StringIO()):
+        assert not utils.stdout_is_terminal()
+        assert utils.purple("text") == "text"
