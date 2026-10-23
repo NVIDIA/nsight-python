@@ -171,7 +171,7 @@ def extract_df_from_data(
     info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
-    info_prefix: str | None = None,
+    collected_info_per_run: Sequence[Mapping[str, Any]] | None = None,
 ) -> pd.DataFrame:
     """
     Aggregates raw per-annotation measurements (from either tool) into a pandas
@@ -186,6 +186,11 @@ def extract_df_from_data(
         derive_metric: Function to transform the raw metric values with config values.
         verbosity: Controls display of extraction progress.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
+        info_collectors_list: Custom info collectors as ``(name, callback, scope)``.
+        config_scope_columns: Collector columns that vary per config or run.
+        annotation_scope_columns: Collector columns that vary per annotation.
+        collected_info_per_run: Custom info collected for each run, in run order,
+            as returned by :func:`nsight.collection.core.run_profile_session`.
 
     Returns:
         A DataFrame containing the extracted and transformed performance data.
@@ -219,42 +224,14 @@ def extract_df_from_data(
         not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     }
 
-    # Load collected info from the pickle file if it exists
-    collected_info_per_run = []
     custom_info_names = set()
     if info_collectors_list:
-        # The caller supplies the prefix so the read path matches the
-        # collection-session write path exactly.
-        if info_prefix is None:
-            info_prefix = ""
-
         # Column names come from the collector metadata (authoritative), not from
         # the first run's collected data. Deriving from run 0 dropped any
         # annotation-scope collector whose annotation was not entered on run 0.
         custom_info_names = {name for name, _callback, _scope in info_collectors_list}
-
-        info_file = f"{info_prefix}collected_info.pkl"
-        if os.path.exists(info_file):
-            import pickle
-
-            with open(info_file, "rb") as f:
-                collected_info_per_run = pickle.load(f)
-            if not isinstance(collected_info_per_run, list):
-                warnings.warn(
-                    f"Collected info file {info_file} is malformed "
-                    f"(expected a list, got {type(collected_info_per_run).__name__}); "
-                    "ignoring custom info.",
-                    category=RuntimeWarning,
-                    stacklevel=2,
-                )
-                collected_info_per_run = []
-            elif verbosity >= VerbosityLevel.INFO:
-                print(f"[NSIGHT-PYTHON] Loaded collected info from {info_file}")
-        else:
-            if verbosity >= VerbosityLevel.INFO:
-                print(
-                    f"[NSIGHT-PYTHON] Warning: No collected info file found at {info_file}"
-                )
+    else:
+        collected_info_per_run = None
 
     # Create arrays for custom info collectors
     custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
@@ -423,13 +400,12 @@ def extract_df_from_data(
             if (
                 collected_info_per_run
                 and idx < len(collected_info_per_run)
-                and isinstance(collected_info_per_run[idx], dict)
+                and isinstance(collected_info_per_run[idx], Mapping)
             ):
                 run_info = collected_info_per_run[idx]
-                # Add once info. Guard against pickle keys that are not in the
-                # metadata-derived custom_info_names (e.g. a stale collected_info
-                # .pkl written by a different set of collectors); such keys have
-                # no column and are ignored rather than raising KeyError.
+                # Add once info. Guard against keys that are not in the
+                # metadata-derived custom_info_names; such keys have no column
+                # and are ignored rather than raising KeyError.
                 for name, value in run_info.get("once_info", {}).items():
                     if name in custom_info_arrays:
                         custom_info_arrays[name].append(value)
@@ -543,7 +519,7 @@ def extract_df_from_report(
     info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
-    info_prefix: str | None = None,
+    collected_info_per_run: Sequence[Mapping[str, Any]] | None = None,
 ) -> pd.DataFrame:
     """
     Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
@@ -557,6 +533,11 @@ def extract_df_from_report(
         derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
+        info_collectors_list: Custom info collectors as ``(name, callback, scope)``.
+        config_scope_columns: Collector columns that vary per config or run.
+        annotation_scope_columns: Collector columns that vary per annotation.
+        collected_info_per_run: Custom info collected for each run, in run order,
+            as returned by :func:`nsight.collection.core.run_profile_session`.
         verbosity: Controls display of extraction progress.
 
     Returns:
@@ -574,12 +555,6 @@ def extract_df_from_report(
         verbosity,
     )
 
-    # Fall back to reconstructing the info prefix from the report directory for
-    # direct callers that did not supply one.
-    if info_collectors_list and info_prefix is None:
-        report_dir = os.path.dirname(report_path)
-        info_prefix = os.path.join(report_dir, "") if report_dir else ""
-
     return extract_df_from_data(
         profiling_data,
         metrics,
@@ -592,5 +567,5 @@ def extract_df_from_report(
         info_collectors_list,
         config_scope_columns,
         annotation_scope_columns,
-        info_prefix,
+        collected_info_per_run,
     )

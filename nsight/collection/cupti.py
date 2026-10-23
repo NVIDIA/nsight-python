@@ -365,7 +365,7 @@ class CUPTICollector(core.NsightCollector):
             for cbid in _LAUNCH_CBIDS:
                 cupti.activity_enable_driver_api(cbid, 1)
 
-            core.run_profile_session(
+            collected_info_per_run = core.run_profile_session(
                 func,
                 configs_list,
                 settings.runs,
@@ -376,7 +376,6 @@ class CUPTICollector(core.NsightCollector):
                 settings.thermal_timeout,
                 settings.thermal_device,
                 settings.info_collectors,
-                settings.output_prefix,
             )
 
             # A kernel's activity record only exists once it has finished, so
@@ -443,7 +442,7 @@ class CUPTICollector(core.NsightCollector):
             settings.info_collectors,
             config_scope_columns,
             annotation_scope_columns,
-            info_prefix=settings.output_prefix or "",
+            collected_info_per_run=collected_info_per_run,
         )
 
         return df

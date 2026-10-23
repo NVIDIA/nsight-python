@@ -7,7 +7,6 @@ import functools
 import importlib.util
 import inspect
 import os
-import pickle
 import threading
 import time
 import warnings
@@ -235,112 +234,6 @@ def _sanitize_configs(
     return configs  # type: ignore[return-value]
 
 
-def _picklable_or_none(value: Any) -> Any:
-    """Return ``value`` if it can be pickled, otherwise None."""
-    try:
-        pickle.dumps(value)
-        return value
-    except Exception:
-        return None
-
-
-def _sanitize_for_pickle(runs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Replace any non-picklable collected value with None, preserving structure.
-
-    Used as a fallback when serializing the full collected-info list fails
-    because a collector returned something unserializable (a CUDA stream, file
-    handle, lambda, ...). Degrading the offending value to None keeps the rest of
-    the run's data instead of losing everything.
-    """
-    sanitized: list[dict[str, Any]] = []
-    for run in runs:
-        new = dict(run)
-        new["config"] = _picklable_or_none(run.get("config"))
-        new["once_info"] = {
-            k: _picklable_or_none(v) for k, v in run.get("once_info", {}).items()
-        }
-        new["config_info"] = {
-            k: _picklable_or_none(v) for k, v in run.get("config_info", {}).items()
-        }
-        annotation_info = []
-        for entry in run.get("annotation_info", []):
-            new_entry = dict(entry)
-            new_entry["config"] = _picklable_or_none(entry.get("config"))
-            new_entry["data"] = {
-                k: _picklable_or_none(v) for k, v in entry.get("data", {}).items()
-            }
-            annotation_info.append(new_entry)
-        new["annotation_info"] = annotation_info
-        sanitized.append(new)
-    return sanitized
-
-
-def _serialize_collected_info(
-    runs: Sequence[Mapping[str, Any]],
-) -> tuple[bytes, bool] | None:
-    """Serialize collected info, replacing only non-picklable values.
-
-    Serialization is completed in memory before opening the output file. This
-    keeps collector-value failures separate from filesystem failures such as a
-    full disk or an unwritable output directory.
-
-    Returns:
-        The serialized payload and whether sanitization was required, or
-        ``None`` when the sanitized data still cannot be serialized.
-    """
-    try:
-        return pickle.dumps(runs), False
-    except Exception as exc:
-        sanitized = _sanitize_for_pickle(runs)
-        try:
-            payload = pickle.dumps(sanitized)
-        except Exception as fallback_exc:
-            warnings.warn(
-                "Failed to serialize custom info after replacing non-picklable "
-                f"values ({type(fallback_exc).__name__}: {fallback_exc}).",
-                category=RuntimeWarning,
-                stacklevel=2,
-            )
-            return None
-
-        warnings.warn(
-            f"Some collected info was not picklable ({type(exc).__name__}: {exc}); "
-            "non-picklable collector values have been replaced with None.",
-            category=RuntimeWarning,
-            stacklevel=2,
-        )
-        return payload, True
-
-
-def _save_collected_info(
-    info_file: str,
-    runs: Sequence[Mapping[str, Any]],
-    verbosity: VerbosityLevel,
-) -> bool:
-    """Serialize and save collected info without conflating failure causes."""
-    serialized = _serialize_collected_info(runs)
-    if serialized is None:
-        return False
-
-    payload, sanitized = serialized
-    try:
-        with open(info_file, "wb") as output_file:
-            output_file.write(payload)
-    except OSError as exc:
-        warnings.warn(
-            f"Failed to save custom info to {info_file} "
-            f"({type(exc).__name__}: {exc}).",
-            category=RuntimeWarning,
-            stacklevel=2,
-        )
-        return False
-
-    if verbosity >= VerbosityLevel.INFO:
-        suffix = " (sanitized)" if sanitized else ""
-        print(f"[NSIGHT-PYTHON] Saved collected info{suffix} to {info_file}")
-    return True
-
-
 def run_profile_session(
     func: Callable[..., None],
     configs: list[Sequence[Any]],
@@ -352,8 +245,13 @@ def run_profile_session(
     thermal_timeout: int | None = None,
     thermal_device: int | None = None,
     info_collectors_list: list[NormalizedInfoCollector] | None = None,
-    output_prefix: str | None = None,
-) -> None:
+) -> list[dict[str, Any]]:
+    """Run ``func`` for every config and run inside a profiling session.
+
+    Returns:
+        The custom info collected for each run, in run order, for the caller
+        to pass to extraction.
+    """
 
     if verbosity >= VerbosityLevel.INFO:
         print("")
@@ -444,7 +342,7 @@ def run_profile_session(
                 )
 
     # Store collected info for each run
-    collected_info_per_run = []
+    collected_info_per_run: list[dict[str, Any]] = []
 
     for c in configs:
         sig = inspect.signature(func)
@@ -599,10 +497,7 @@ def run_profile_session(
             stacklevel=external_stacklevel,
         )
 
-    # Save collected info to a file if we have collectors
-    if info_collectors_list and output_prefix:
-        info_file = f"{output_prefix}collected_info.pkl"
-        _save_collected_info(info_file, collected_info_per_run, verbosity)
+    return collected_info_per_run
 
 
 @dataclasses.dataclass

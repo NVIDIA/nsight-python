@@ -24,6 +24,14 @@ API Changes
 Fixes
 -----
 
+- **Custom info is no longer read back from the output directory**:
+  Values gathered by ``info_collectors`` are now passed from collection to
+  extraction in memory. Previously they were saved to ``collected_info.pkl``
+  under ``output_prefix`` and loaded from that path, so a file already at that
+  path could be loaded in place of the collected values. ``collected_info.pkl``
+  is no longer written, and collector values that cannot be pickled are no
+  longer replaced with ``None``.
+
 - **Improved kernel-count and missing-report errors**
   (`#83 <https://github.com/NVIDIA/nsight-python/pull/83>`_):
   The errors raised when an annotation launches more than one kernel, or a
