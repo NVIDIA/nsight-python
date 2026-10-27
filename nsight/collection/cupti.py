@@ -253,6 +253,7 @@ class CUPTICollector(core.NsightCollector):
         self.ignore_kernel_list = ignore_kernel_list or []
         self.combine_kernel_metrics = combine_kernel_metrics
 
+    @_session.capture()
     def collect(
         self,
         func: Callable[..., None],
@@ -370,20 +371,19 @@ class CUPTICollector(core.NsightCollector):
             for cbid in _LAUNCH_CBIDS:
                 cupti.activity_enable_driver_api(cbid, 1)
 
-            with _session.capture() as invocations:
-                core.run_profile_session(
-                    func,
-                    configs_list,
-                    settings.runs,
-                    settings.verbosity,
-                    settings.thermal_mode,
-                    settings.thermal_wait,
-                    settings.thermal_cont,
-                    settings.thermal_timeout,
-                    settings.thermal_device,
-                    settings.info_collectors,
-                    settings.output_prefix,
-                )
+            core.run_profile_session(
+                func,
+                configs_list,
+                settings.runs,
+                settings.verbosity,
+                settings.thermal_mode,
+                settings.thermal_wait,
+                settings.thermal_cont,
+                settings.thermal_timeout,
+                settings.thermal_device,
+                settings.info_collectors,
+                settings.output_prefix,
+            )
 
             # A kernel's activity record only exists once it has finished, so
             # wait for the device before flushing.
@@ -450,7 +450,7 @@ class CUPTICollector(core.NsightCollector):
             config_scope_columns,
             annotation_scope_columns,
             info_prefix=settings.output_prefix or "",
-            invocations=invocations,
+            invocations=_session.get_invocations(),
         )
 
         return df

@@ -241,3 +241,20 @@ def test_session_context_keeps_profile_call_return_value() -> None:
         result = profile_call()
     assert result is returned_info
     assert list(identities.values()) == [_session.Invocation("kernel", 0, 0)]
+
+
+def test_collector_context_covers_post_run_teardown() -> None:
+    @_session.capture()
+    def collector() -> object:
+        value = object()
+        with _session.run(0, 0):
+            _session.marker_name("inside")
+        assert list(_session.get_invocations().values()) == [
+            _session.Invocation("inside", 0, 0)
+        ]
+        with pytest.raises(RuntimeError, match="outside a profiled config/run"):
+            _session.marker_name("during synchronization")
+        return value
+
+    assert collector() is not None
+    assert _session.marker_name("after collection") == "after collection"

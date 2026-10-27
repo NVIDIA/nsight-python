@@ -411,6 +411,7 @@ class NCUCollector(core.NsightCollector):
         self.cache_control = cache_control
         self.replay_mode = replay_mode
 
+    @_session.capture()
     def collect(
         self,
         func: Callable[..., None],
@@ -496,20 +497,19 @@ class NCUCollector(core.NsightCollector):
                     f"{len(configs_list)} configurations, {settings.runs} runs each",
                 )
 
-            with _session.capture() as invocations:
-                core.run_profile_session(
-                    func,
-                    configs_list,
-                    settings.runs,
-                    settings.verbosity,
-                    settings.thermal_mode,
-                    settings.thermal_wait,
-                    settings.thermal_cont,
-                    settings.thermal_timeout,
-                    settings.thermal_device,
-                    settings.info_collectors,
-                    settings.output_prefix,
-                )
+            core.run_profile_session(
+                func,
+                configs_list,
+                settings.runs,
+                settings.verbosity,
+                settings.thermal_mode,
+                settings.thermal_wait,
+                settings.thermal_cont,
+                settings.thermal_timeout,
+                settings.thermal_device,
+                settings.info_collectors,
+                settings.output_prefix,
+            )
         finally:
             try:
                 end_profiling()
@@ -563,7 +563,7 @@ class NCUCollector(core.NsightCollector):
             config_scope_columns,
             annotation_scope_columns,
             info_prefix=settings.output_prefix or "",
-            invocations=invocations,
+            invocations=_session.get_invocations(),
         )
 
         return df

@@ -45,6 +45,13 @@ def capture() -> Iterator[dict[str, Invocation]]:
             _active = None
 
 
+def get_invocations() -> dict[str, Invocation]:
+    """Read identities while the collector's session context is still active."""
+    with _lock:
+        assert _active is not None
+        return _active.invocations
+
+
 @contextmanager
 def run(config_index: int, run_index: int) -> Iterator[None]:
     with _lock:
