@@ -47,6 +47,14 @@ DERIVED_METRIC_MISSING_UNIT_WARNING = (
     "np.nan will be added to the 'Unit' column in the dataframe."
 )
 
+# Hint appended to kernel-count errors. Autotuning and other first-call work
+# launch extra kernels only on the first run.
+_WARMUP_HINT = (
+    "If the code in the annotation autotunes or does other work only on its "
+    "first call, run it once for every configuration before calling the "
+    "profiled function, so that every run launches the same kernels.\n"
+)
+
 
 def extract_ncu_action_data(action: Any, metrics: Sequence[str]) -> utils.ActionData:
     """
@@ -114,8 +122,13 @@ def extract_data_from_report(
         report: ncu_report.IContext = ncu_report.load_report(report_path)
     except FileNotFoundError:
         raise exceptions.ProfilerException(
-            "No NVIDIA Nsight Compute report found. Please run nsight-python with `@nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.DEBUG)`"
-            "to identify the issue."
+            f"No NVIDIA Nsight Compute report found at {report_path}. NVIDIA Nsight "
+            "Compute writes a report only if it profiled at least one kernel, so "
+            "the most likely cause is that no kernel was launched inside any "
+            "nsight.annotate region (for example, the annotated code only creates "
+            "a view, is a no-op, or returns a cached result). Otherwise, run with "
+            "`@nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.DEBUG)` and "
+            "check the NVIDIA Nsight Compute log to identify the issue."
         )
 
     # Extract all profiling data
@@ -246,6 +259,16 @@ def extract_df_from_data(
     # Create arrays for custom info collectors
     custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
 
+    # Without this check, a session in which no kernel could be attributed to
+    # any annotation would silently return an empty DataFrame.
+    if not profiling_data:
+        raise RuntimeError(
+            "No kernels were profiled: no kernel launch could be attributed to "
+            "any nsight.annotate region. Check that each annotated region "
+            "launches at least one kernel and that no kernel launched in it is "
+            "listed in ignore_kernel_list."
+        )
+
     for annotation, annotation_data in profiling_data.items():
         if verbosity >= VerbosityLevel.INFO:
             print(f"[NSIGHT-PYTHON] Extracting {annotation} profiling data")
@@ -261,7 +284,9 @@ def extract_df_from_data(
         if len(annotation_data) % len(configs_repeated) != 0:
             raise RuntimeError(
                 "Expect same number of kernels per run. "
-                f"Got average of {len(annotation_data) / len(configs_repeated)} per run"
+                f"Got average of {len(annotation_data) / len(configs_repeated)} per run "
+                f"in the {annotation} annotation.\n"
+                f"{_WARMUP_HINT}"
             )
         num_kernels = len(annotation_data) // len(configs_repeated)
 
@@ -269,12 +294,15 @@ def extract_df_from_data(
             if combine_kernel_metrics is None:
                 raise RuntimeError(
                     (
-                        f"More than one (total={num_kernels}) kernel is launched within the {annotation} annotation.\n"
+                        f"More than one ({len(annotation_data)} in {len(configs_repeated)} "
+                        f"runs, {num_kernels} per run on average) kernel is launched "
+                        f"within the {annotation} annotation.\n"
                         "We expect one kernel per annotation.\n"
                         "Try one of the following solutions:\n"
                         "  - Use `replay_mode='range'` to profile the entire annotated range instead of individual kernels\n"
                         "  - Use `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n"
                         "  - Add some of the kernels to the ignore_kernel_list\n"
+                        f"{_WARMUP_HINT}"
                         "Kernels are:\n"
                         + "\n".join(sorted(set(x.name for x in annotation_data)))
                     )

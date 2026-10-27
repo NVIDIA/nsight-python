@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import threading
 from typing import Any
 
@@ -84,7 +85,14 @@ def test_annotate_context_manager(ignore_failures: bool) -> None:
             ):
                 raise DummyTestException()
 
-    result = annotate_context_manager()
+    # An ignored failure must still be reported, with the exception it ignored
+    expect_warning = (
+        pytest.warns(RuntimeWarning, match="Ignored failure.*DummyTestException")
+        if ignore_failures
+        else contextlib.nullcontext()
+    )
+    with expect_warning:
+        result = annotate_context_manager()
     assert result is not None
     df = result.to_dataframe()
     if ignore_failures:
@@ -131,7 +139,14 @@ def test_annotate_decorator(ignore_failures: bool) -> None:
         else:
             raise_exception(a, False)
 
-    result = annotate_decorator()
+    # An ignored failure must still be reported, with the exception it ignored
+    expect_warning = (
+        pytest.warns(RuntimeWarning, match="Ignored failure.*DummyTestException")
+        if ignore_failures
+        else contextlib.nullcontext()
+    )
+    with expect_warning:
+        result = annotate_decorator()
     assert result is not None
     df = result.to_dataframe()
     if ignore_failures:

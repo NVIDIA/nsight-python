@@ -3,6 +3,7 @@
 
 import functools
 import threading
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -112,7 +113,9 @@ class annotate:
         ignore_failures: Flag indicating whether to ignore
             failures in the annotate context. If set to ``True``, any exceptions
             raised within the context will be ignored, and the profiling will
-            continue. The measured metric for this run will be set to NaN.
+            continue. The measured metric for this run will be set to NaN, and
+            a ``RuntimeWarning`` naming the annotation and the ignored exception
+            is emitted.
             Default: ``False``
 
     Raises:
@@ -178,6 +181,16 @@ class annotate:
 
         if exc_type and not self.ignore_failures:
             return False  # propagate the exception
+
+        if exc_type:
+            # The failed run only shows up as NaN in the results, so report why
+            # it failed rather than discarding the exception.
+            warnings.warn(
+                f"Ignored failure in annotation '{self.name}': "
+                f"{exc_type.__name__}: {exc_value}",
+                category=RuntimeWarning,
+                stacklevel=2,
+            )
 
         return True
 

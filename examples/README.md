@@ -28,7 +28,7 @@ Visit [pytorch.org](https://pytorch.org/get-started/locally/) for installation c
 
 #### cuTile Python (Optional)
 
-For the cuTile example (`13_cutile.py`):
+For the cuTile example (`12_cutile.py`):
 
 Refer [Installing cuTile Python](https://docs.nvidia.com/cuda/cutile-python/quickstart.html#installing-cutile-python).
 
@@ -105,7 +105,7 @@ This will profile a simple matrix multiplication and generate a plot showing the
 - **`09_advanced_metric_custom.py`** - Computing advanced custom metric
   - Using `derive_metric` to compute custom metric from multiple metrics
 
-- **`10_multiple_kernels_combine.py`** - Combining metrics from multiple kernels
+- **`10_combine_kernel_metrics.py`** - Combining metrics from multiple kernels
   - Using `combine_kernel_metrics` to aggregate metrics from multiple kernels
   - Summing metrics from consecutive kernel executions
 
