@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import pickle
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -78,18 +76,19 @@ def test_variable_counts_within_config_and_reducer_order() -> None:
     assert df.Value.tolist() == [12, 345]
 
 
-def test_missing_annotation_keeps_custom_info_aligned(tmp_path: Path) -> None:
-    prefix = str(tmp_path / "info-")
-    with open(prefix + "collected_info.pkl", "wb") as f:
-        pickle.dump([{"config_info": {"run_value": i}} for i in range(4)], f)
-    df = extract(
+def test_missing_annotation_keeps_run_index_aligned() -> None:
+    # Extraction uses this absolute index to select custom info for a skipped run.
+    groups = extraction._group_samples(
         {"second": [action(9)]},
+        [(10,), (20,)],
+        2,
         {"second": _session.Invocation("public", 1, 1)},
-        info_collectors_list=[("run_value", lambda: 0, "run")],
-        info_prefix=prefix,
     )
-    assert df["size"].tolist() == [20]
-    assert df.run_value.tolist() == [3]
+    index, config, kernels = groups["public"][0]
+    assert index == 3
+    assert config == (20,)
+    assert kernels[0].values is not None
+    assert kernels[0].values.tolist() == [9]
 
 
 def test_empty_or_fully_filtered_invocation_is_explicit() -> None:
@@ -121,11 +120,12 @@ def test_partial_failure_remains_missing() -> None:
 def test_session_identities_and_cleanup() -> None:
     names: list[str] = []
 
-    @_session.capture
-    def collect() -> None:
-        for c in range(2):
-            with _session.run(c, 0):
-                names.append(_session.marker_name("same [nspy:looks-internal]"))
+    def collect() -> dict[str, _session.Invocation]:
+        with _session.capture() as identities:
+            for c in range(2):
+                with _session.run(c, 0):
+                    names.append(_session.marker_name("same [nspy:looks-internal]"))
+        return identities
 
     first = collect()
     second = collect()
@@ -134,11 +134,11 @@ def test_session_identities_and_cleanup() -> None:
     assert all(x.annotation == "same [nspy:looks-internal]" for x in first.values())
     assert _session.marker_name("outside") == "outside"
 
-    @_session.capture
     def failing() -> None:
-        with _session.run(0, 0):
-            _session.marker_name("a")
-            raise ValueError("failed")
+        with _session.capture():
+            with _session.run(0, 0):
+                _session.marker_name("a")
+                raise ValueError("failed")
 
     with pytest.raises(ValueError, match="failed"):
         failing()
@@ -189,3 +189,55 @@ def test_scalar_generator_configs_keep_values_aligned() -> None:
     )
     assert df["size"].tolist() == [10, 20]
     assert df.Value.tolist() == [1, 2]
+
+
+def test_annotation_outside_run_fails_at_entry_and_session_recovers() -> None:
+    from nsight import annotate
+
+    for after_run in (False, True):
+        with _session.capture() as identities:
+            if after_run:
+                with _session.run(0, 0):
+                    _session.marker_name("inside")
+            with pytest.raises(RuntimeError, match="outside a profiled config/run"):
+                with annotate("outside"):
+                    pytest.fail("annotation body must not execute")
+            assert all(x.annotation != "outside" for x in identities.values())
+    assert _session.marker_name("outside") == "outside"
+
+
+def test_worker_annotation_after_run_has_clear_error() -> None:
+    import threading
+
+    errors: list[str] = []
+
+    def worker() -> None:
+        try:
+            _session.marker_name("late worker")
+        except RuntimeError as exc:
+            errors.append(str(exc))
+
+    with _session.capture():
+        with _session.run(0, 0):
+            pass
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+    assert len(errors) == 1
+    assert "late worker" in errors[0]
+    assert "join worker threads" in errors[0]
+
+
+def test_session_context_keeps_profile_call_return_value() -> None:
+    # The execution mapping must not replace metadata returned by collection.
+    returned_info = [{"config_info": {"value": object()}}]
+
+    def profile_call() -> list[dict[str, Any]]:
+        with _session.run(0, 0):
+            _session.marker_name("kernel")
+        return returned_info
+
+    with _session.capture() as identities:
+        result = profile_call()
+    assert result is returned_info
+    assert list(identities.values()) == [_session.Invocation("kernel", 0, 0)]

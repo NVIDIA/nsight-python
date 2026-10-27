@@ -114,8 +114,13 @@ def extract_data_from_report(
         report: ncu_report.IContext = ncu_report.load_report(report_path)
     except FileNotFoundError:
         raise exceptions.ProfilerException(
-            "No NVIDIA Nsight Compute report found. Please run nsight-python with `@nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.DEBUG)`"
-            "to identify the issue."
+            f"No NVIDIA Nsight Compute report found at {report_path}. NVIDIA Nsight "
+            "Compute writes a report only if it profiled at least one kernel, so "
+            "the most likely cause is that no kernel was launched inside any "
+            "nsight.annotate region (for example, the annotated code only creates "
+            "a view, is a no-op, or returns a cached result). Otherwise, run with "
+            "`@nsight.analyze.kernel(verbosity=nsight.VerbosityLevel.DEBUG)` and "
+            "check the NVIDIA Nsight Compute log to identify the issue."
         )
 
     # Extract all profiling data
@@ -162,7 +167,9 @@ def _group_samples(
             f"Profile contains unknown annotation executions: {sorted(unknown)}"
         )
     if not invocations:
-        raise RuntimeError("No annotations were executed during profiling")
+        raise RuntimeError(
+            "No kernels were profiled: no annotations were executed during profiling"
+        )
     for marker, invocation in invocations.items():
         kernels = profiling_data.get(marker, [])
         if not kernels:
@@ -289,8 +296,11 @@ def extract_df_from_data(
             if len(kernels) > 1 and combine_kernel_metrics is None:
                 raise RuntimeError(
                     f"More than one (total={len(kernels)}) kernel is launched within "
-                    f"the {annotation} annotation. Supply combine_kernel_metrics, "
-                    "use replay_mode='range', or filter with ignore_kernel_list."
+                    f"the {annotation} annotation (config {idx // iterations}, "
+                    f"run {idx % iterations}). Supply combine_kernel_metrics, "
+                    "use replay_mode='range', or filter with ignore_kernel_list. "
+                    "If the code autotunes, warm it up before profiling to exclude "
+                    "first-call work."
                 )
             if len(kernels) > 1 and not callable(combine_kernel_metrics):
                 raise TypeError("combine_kernel_metrics must be callable")

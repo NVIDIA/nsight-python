@@ -1128,6 +1128,9 @@ def test_parameter_output(
         assert (
             len(captured.out) == 0
         ), "stdout should be empty for VerbosityLevel.SILENT"
+    else:
+        # Captured stdout is not a terminal, so no ANSI color or cursor codes
+        assert "\033[" not in captured.out
 
     # TODO: INFO and DEBUG modes
 

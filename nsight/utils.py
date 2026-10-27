@@ -78,8 +78,23 @@ class Colors:
     UNDERLINE = "\033[4m"
 
 
+def stdout_is_terminal() -> bool:
+    """
+    Returns whether stdout is an interactive terminal.
+
+    ANSI color and cursor-movement codes are only emitted when this is true, so
+    that output redirected to a file, a pipe, or a captured log stays plain text.
+    """
+    try:
+        return sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
 def purple(msg: str) -> str:  # pragma: no cover
     """Prints ``msg`` in purple."""
+    if not stdout_is_terminal():
+        return msg
     return Colors.PURPLE + msg + Colors.ENDC
 
 

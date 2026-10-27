@@ -3,15 +3,11 @@
 
 """Private execution identities shared by the collectors and annotations."""
 
-import functools
 import threading
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import ParamSpec
-
-P = ParamSpec("P")
 
 
 @dataclass(frozen=True)
@@ -33,39 +29,35 @@ _lock = threading.RLock()
 _active: Session | None = None
 
 
-def capture(func: Callable[P, None]) -> Callable[P, dict[str, Invocation]]:
-    """Keep identities until collection ends; always clear live session state."""
-
-    @functools.wraps(func)
-    def wrapped(*args: P.args, **kwargs: P.kwargs) -> dict[str, Invocation]:
-        global _active
+@contextmanager
+def capture() -> Iterator[dict[str, Invocation]]:
+    """Track execution identities without changing the profiled call's return value."""
+    global _active
+    with _lock:
+        if _active is not None:
+            raise RuntimeError("Overlapping profiling sessions are not supported")
+        session = Session(uuid.uuid4().hex, {})
+        _active = session
+    try:
+        yield session.invocations
+    finally:
         with _lock:
-            if _active is not None:
-                raise RuntimeError("Overlapping profiling sessions are not supported")
-            session = Session(uuid.uuid4().hex, {})
-            _active = session
-        try:
-            func(*args, **kwargs)
-            return session.invocations
-        finally:
-            with _lock:
-                _active = None
-
-    return wrapped
+            _active = None
 
 
 @contextmanager
 def run(config_index: int, run_index: int) -> Iterator[None]:
     with _lock:
-        assert _active is not None
-        _active.current_run = (config_index, run_index)
-        _active.seen.clear()
+        session = _active
+        if session is not None:
+            session.current_run = (config_index, run_index)
+            session.seen.clear()
     try:
         yield
     finally:
         with _lock:
-            assert _active is not None
-            _active.current_run = None
+            if session is not None:
+                session.current_run = None
 
 
 def marker_name(annotation: str) -> str:
@@ -76,8 +68,15 @@ def marker_name(annotation: str) -> str:
     user strings are never parsed or interpreted as internal identifiers.
     """
     with _lock:
-        if _active is None or _active.current_run is None:
+        if _active is None:
             return annotation
+        if _active.current_run is None:
+            raise RuntimeError(
+                f"Annotation {annotation!r} was entered outside a profiled config/run. "
+                "Enter annotations inside the profiled function, and join worker "
+                "threads before that function returns. Info-collector callbacks "
+                "cannot enter annotations."
+            )
         config_index, run_index = _active.current_run
         invocation = Invocation(annotation, config_index, run_index)
         if annotation in _active.seen:

@@ -3,9 +3,7 @@
 # Nsight Python
 
 Nsight Python is a Python kernel profiling interface based on NVIDIA Nsight Tools.
-It simplifies performance benchmarking and visualization of performance metrics — all in just a few lines of Python.
-
-Nsight Python helps you unlock peak performance from your GPU kernels by simplifying performance benchmarking and visualization — all in just a few lines of Python code.
+It helps you unlock peak performance from your GPU kernels by simplifying performance benchmarking and visualization of performance metrics — all in just a few lines of Python.
 
 ## Installation
 

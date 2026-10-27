@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from nsight import exceptions, extraction, info_collector, utils
+from nsight import _session, exceptions, extraction, info_collector, utils
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
 from nsight.utils import VerbosityLevel
@@ -496,19 +496,20 @@ class NCUCollector(core.NsightCollector):
                     f"{len(configs_list)} configurations, {settings.runs} runs each",
                 )
 
-            invocations = core.run_profile_session(
-                func,
-                configs_list,
-                settings.runs,
-                settings.verbosity,
-                settings.thermal_mode,
-                settings.thermal_wait,
-                settings.thermal_cont,
-                settings.thermal_timeout,
-                settings.thermal_device,
-                settings.info_collectors,
-                settings.output_prefix,
-            )
+            with _session.capture() as invocations:
+                core.run_profile_session(
+                    func,
+                    configs_list,
+                    settings.runs,
+                    settings.verbosity,
+                    settings.thermal_mode,
+                    settings.thermal_wait,
+                    settings.thermal_cont,
+                    settings.thermal_timeout,
+                    settings.thermal_device,
+                    settings.info_collectors,
+                    settings.output_prefix,
+                )
         finally:
             try:
                 end_profiling()

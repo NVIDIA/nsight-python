@@ -341,7 +341,6 @@ def _save_collected_info(
     return True
 
 
-@_session.capture
 def run_profile_session(
     func: Callable[..., None],
     configs: list[Sequence[Any]],
@@ -386,8 +385,13 @@ def run_profile_session(
     bar_length = 100
     progress_time: float = 0
 
-    # overwrite flag: we do not overwrite when output mode is debug
-    overwrite_output = verbosity < VerbosityLevel.DEBUG
+    # overwrite flag: we do not overwrite when output mode is debug, or when
+    # stdout is not a terminal (overwriting relies on cursor-movement codes)
+    is_terminal = utils.stdout_is_terminal()
+    overwrite_output = verbosity < VerbosityLevel.DEBUG and is_terminal
+    # Without a terminal to overwrite in place, intermediate progress bars would
+    # each become a new line, so only the final one is printed (except in debug)
+    show_intermediate_progress = is_terminal or verbosity >= VerbosityLevel.DEBUG
     show_return_type_warning = False
     config_lengths: list[int] = list()
 
@@ -562,7 +566,7 @@ def run_profile_session(
 
             # Update time estimates every half second
             if time.time() - progress_time > 0.5:
-                if verbosity >= VerbosityLevel.INFO:
+                if verbosity >= VerbosityLevel.INFO and show_intermediate_progress:
                     utils.print_progress_bar(
                         total_runs,
                         curr_run,

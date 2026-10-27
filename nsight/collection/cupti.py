@@ -24,7 +24,7 @@ from cuda.bindings.runtime import (
 )
 from cuda.pathfinder import load_nvidia_dynamic_lib
 
-from nsight import exceptions, extraction, utils
+from nsight import _session, exceptions, extraction, utils
 from nsight.collection import core
 from nsight.exceptions import CUPTI_UNAVAILABLE_MSG
 from nsight.utils import VerbosityLevel
@@ -370,19 +370,20 @@ class CUPTICollector(core.NsightCollector):
             for cbid in _LAUNCH_CBIDS:
                 cupti.activity_enable_driver_api(cbid, 1)
 
-            invocations = core.run_profile_session(
-                func,
-                configs_list,
-                settings.runs,
-                settings.verbosity,
-                settings.thermal_mode,
-                settings.thermal_wait,
-                settings.thermal_cont,
-                settings.thermal_timeout,
-                settings.thermal_device,
-                settings.info_collectors,
-                settings.output_prefix,
-            )
+            with _session.capture() as invocations:
+                core.run_profile_session(
+                    func,
+                    configs_list,
+                    settings.runs,
+                    settings.verbosity,
+                    settings.thermal_mode,
+                    settings.thermal_wait,
+                    settings.thermal_cont,
+                    settings.thermal_timeout,
+                    settings.thermal_device,
+                    settings.info_collectors,
+                    settings.output_prefix,
+                )
 
             # A kernel's activity record only exists once it has finished, so
             # wait for the device before flushing.
