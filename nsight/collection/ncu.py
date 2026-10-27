@@ -10,10 +10,12 @@ Nsight Python annotations.
 """
 
 import ctypes
+import importlib.metadata
 import os
 import re
 import shutil
 import subprocess
+import warnings
 from collections.abc import Callable, Collection, Iterable, Sequence
 from enum import IntEnum
 from typing import Any, Literal
@@ -58,8 +60,13 @@ class NvInjResult(IntEnum):
     NV_INJ_ERROR_NOT_INITIALIZED = 3
 
 
-def check_ncu_version(ncu_path: str) -> None:
-    """Raise ProfilerException if the installed ncu is older than MIN_NCU_VERSION."""
+def get_ncu_version(ncu_path: str) -> tuple[int, ...] | None:
+    """Query the version of the installed ncu.
+
+    Returns:
+        The four numeric components of the installed ncu version, or ``None`` if
+        it could not be determined.
+    """
     try:
         result = subprocess.run(
             [ncu_path, "--version"],
@@ -68,20 +75,63 @@ def check_ncu_version(ncu_path: str) -> None:
             text=True,
         )
     except subprocess.CalledProcessError:
-        return
+        return None
 
     # Matches e.g. "Version 2026.2.1.0" and captures the four numeric components
     match = re.search(r"Version\s+(\d+)\.(\d+)\.(\d+)\.(\d+)", result.stdout)
-    if match:
-        version = tuple(int(x) for x in match.groups())
-        if version < MIN_NCU_VERSION:
-            min_str = ".".join(str(x) for x in MIN_NCU_VERSION)
-            got_str = ".".join(str(x) for x in version)
-            raise exceptions.ProfilerException(
-                f"NVIDIA Nsight Compute {min_str} or later is required "
-                f"(CUDA Toolkit 13.3 Update 1 or later), but found {got_str}. "
-                f"Please upgrade NVIDIA Nsight Compute."
-            )
+    if match is None:
+        return None
+    return tuple(int(x) for x in match.groups())
+
+
+def check_ncu_version(ncu_version: tuple[int, ...]) -> None:
+    """Raise ProfilerException if ncu_version is older than MIN_NCU_VERSION."""
+    if ncu_version < MIN_NCU_VERSION:
+        min_str = ".".join(str(x) for x in MIN_NCU_VERSION)
+        got_str = ".".join(str(x) for x in ncu_version)
+        raise exceptions.ProfilerException(
+            f"NVIDIA Nsight Compute {min_str} or later is required, "
+            f"but found {got_str}. "
+            f"Please upgrade NVIDIA Nsight Compute."
+        )
+
+
+def get_ncu_report_version() -> tuple[int, ...] | None:
+    """Return the major and minor version of the installed ncu-report.
+
+    Returns:
+        The ``(major, minor)`` version, or ``None`` if it could not be determined:
+        ncu-report has no package metadata (e.g. it is the ``ncu_report`` module
+        shipped with NVIDIA Nsight Compute, added to ``PYTHONPATH``), or its
+        version string could not be parsed.
+    """
+    try:
+        report_version = importlib.metadata.version("ncu-report")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+    match = re.match(r"(\d+)\.(\d+)", report_version)
+    if match is None:
+        return None
+    return tuple(int(x) for x in match.groups())
+
+
+def check_ncu_report_version(
+    ncu_version: tuple[int, ...], report_version: tuple[int, ...]
+) -> None:
+    """Raise ProfilerException if ncu-report is older than the installed ncu.
+
+    Only the major and minor components are compared. An older ncu-report may
+    not be able to read reports written by a newer NVIDIA Nsight Compute.
+    """
+    if report_version[:2] < ncu_version[:2]:
+        report_str = ".".join(str(x) for x in report_version)
+        ncu_str = ".".join(str(x) for x in ncu_version)
+        raise exceptions.ProfilerException(
+            f"The installed ncu-report {report_str} is older than NVIDIA Nsight "
+            f"Compute {ncu_str}, so it may not be able to read the profiling "
+            f"results. Please install ncu-report>={ncu_version[0]}.{ncu_version[1]}"
+        )
 
 
 def format_injection_error_message(code: int, action: str) -> str:
@@ -143,7 +193,24 @@ def init_injection() -> None:
                 "Please install Nsight Compute CLI."
             )
 
-        check_ncu_version(ncu_path)
+        ncu_version = get_ncu_version(ncu_path)
+        if ncu_version is None:
+            warnings.warn(
+                "Could not determine the NVIDIA Nsight Compute version.",
+                category=RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            check_ncu_version(ncu_version)
+            report_version = get_ncu_report_version()
+            if report_version is None:
+                warnings.warn(
+                    "Could not determine the ncu-report version.",
+                    category=RuntimeWarning,
+                    stacklevel=2,
+                )
+            else:
+                check_ncu_report_version(ncu_version, report_version)
 
         inj_dir = get_injection_library_path(ncu_path)
 

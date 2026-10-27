@@ -108,7 +108,7 @@ CUPTI may be activated either before or after CUDA is initialized.
 Limitations
 """""""""""
 
-**Platform.** Linux only for now.
+**Platform.** Linux only for now. The CUPTI backend is not supported on Windows.
 
 **Metrics.** Only ``"gpu__time_duration.sum"`` is supported. CUPTI measures it
 by recording kernel start and end timestamps from CUPTI activity records

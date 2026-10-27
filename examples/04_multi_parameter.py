@@ -70,7 +70,7 @@ def benchmark_multi_param(
 
 def main() -> None:
     benchmark_multi_param()
-    print("✓ Multi-parameter sweep complete! Check '04_multi_parameter.png'")
+    print("Multi-parameter sweep complete! Check '04_multi_parameter.png'")
 
 
 if __name__ == "__main__":
