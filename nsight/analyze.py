@@ -201,9 +201,11 @@ def kernel(
             how to summarize the collected metrics into a single number. For example,
             if we profile runtime and want to sum the times of all kernels we can specify
             ``combine_kernel_metrics = lambda x, y: x + y``. The function should take
-            two arguments and return a single value. Each annotation must still launch
-            the same number of kernels across configurations and repeated runs;
-            different counts may cause an error or incorrect results. Default: ``None``.
+            two arguments and return a single value. Default: ``None``.
+            Kernels are combined independently for each annotation execution.
+            The number of kernels may vary across configurations and runs.
+            An executed annotation with no remaining kernels (including after
+            filtering) raises an error; skipped annotations produce no sample.
         clock_control: Control the behavior of the GPU clocks during profiling. Allowed values:
 
             - ``"base"``: GPC and memory clocks are locked to their respective base frequency during profiling. This has no impact on thermal throttling. Note that actual clocks might still vary, depending on the level of driver support for this feature. As an alternative, use nvidia-smi to lock the clocks externally and set this option to ``"none"``.

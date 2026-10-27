@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from nsight import exceptions, extraction, info_collector, utils
+from nsight import _session, exceptions, extraction, info_collector, utils
 from nsight.collection import core
 from nsight.exceptions import NCUErrorContext
 from nsight.utils import VerbosityLevel
@@ -367,6 +367,10 @@ class NCUCollector(core.NsightCollector):
             if we profile runtime and want to sum the times of all kernels we can specify
             ``combine_kernel_metrics = lambda x, y: x + y``. The function should take
             two arguments and return a single value. Default: ``None``.
+            Kernels are combined independently for each annotation execution.
+            The number of kernels may vary across configurations and runs.
+            An executed annotation with no remaining kernels (including after
+            filtering) raises an error; skipped annotations produce no sample.
         clock_control: Select clock_control option
             control in NVIDIA Nsight Compute. If ``None``, we launch ``ncu --clock-control none ...``.
             For more details, see the NVIDIA Nsight Compute Profiling Guide:
@@ -407,6 +411,7 @@ class NCUCollector(core.NsightCollector):
         self.cache_control = cache_control
         self.replay_mode = replay_mode
 
+    @_session.capture()
     def collect(
         self,
         func: Callable[..., None],
@@ -558,6 +563,7 @@ class NCUCollector(core.NsightCollector):
             config_scope_columns,
             annotation_scope_columns,
             info_prefix=settings.output_prefix or "",
+            invocations=_session.get_invocations(),
         )
 
         return df

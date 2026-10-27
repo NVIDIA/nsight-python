@@ -62,3 +62,22 @@ per annotation.
 
 .. autoclass:: nsight.InfoCollector
    :no-undoc-members:
+
+Variable kernel counts
+----------------------
+
+With ``combine_kernel_metrics``, each execution of an annotation is reduced
+independently. For example, configurations launching two and three kernels can
+be profiled in the same call, and counts may also vary between repeated runs.
+The reduction preserves kernel launch order. Without a reducer, kernel replay
+still requires one kernel per annotation execution.
+
+Skipped annotations do not produce samples. An annotation that is entered but
+contains no profiled kernels, including when all its kernels are filtered out,
+raises an error identifying the configuration and run. Failed executions
+suppressed with ``ignore_failures=True`` remain missing measurements.
+
+Result tables retain the supplied annotation names. Raw NVTX labels in profiler
+reports include a private execution suffix so results can be attributed without
+assuming equal kernel counts. The processed ``Kernel`` column describes the
+first sample's kernel sequence; inspect raw samples when sequences vary.

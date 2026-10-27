@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from nsight import VerbosityLevel, collection, exceptions, extraction, utils
+from nsight import VerbosityLevel, _session, collection, exceptions, extraction, utils
 from nsight.collection import cupti as cupti_collection
 
 
@@ -239,11 +239,15 @@ def test_extract_df_from_data_raises_if_no_kernel_was_attributed() -> None:
             _profiled_func,
             None,
             VerbosityLevel.SILENT,
+            invocations={},
         )
 
 
 def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
-    profiling_data = {"autotuned": [_action_data("my_kernel")] * 6}
+    profiling_data = {
+        "run0": [_action_data("my_kernel")] * 3,
+        "run1": [_action_data("my_kernel")] * 3,
+    }
     with pytest.raises(RuntimeError) as exc_info:
         extraction.extract_df_from_data(
             profiling_data,
@@ -253,9 +257,14 @@ def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
             _profiled_func,
             None,
             VerbosityLevel.SILENT,
+            invocations={
+                "run0": _session.Invocation("autotuned", 0, 0),
+                "run1": _session.Invocation("autotuned", 0, 1),
+            },
         )
     message = str(exc_info.value)
-    assert "More than one (6 in 2 runs, 3 per run on average) kernel" in message
+    assert "More than one (total=3) kernel" in message
+    assert "config 0, run 0" in message
     assert "autotunes" in message
 
 

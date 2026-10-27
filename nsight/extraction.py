@@ -33,7 +33,7 @@ import ncu_report
 import numpy as np
 import pandas as pd
 
-from nsight import exceptions, utils
+from nsight import _session, exceptions, utils
 from nsight.utils import VerbosityLevel, is_scalar
 
 DerivedValue: TypeAlias = float | int | None
@@ -45,14 +45,6 @@ DERIVED_METRIC_MISSING_UNIT_WARNING = (
     "Derived metric '{}' does not have a unit specified. "
     "Return a tuple (value, unit) instead of just the value. "
     "np.nan will be added to the 'Unit' column in the dataframe."
-)
-
-# Hint appended to kernel-count errors. Autotuning and other first-call work
-# launch extra kernels only on the first run.
-_WARMUP_HINT = (
-    "If the code in the annotation autotunes or does other work only on its "
-    "first call, run it once for every configuration before calling the "
-    "profiled function, so that every run launches the same kernels.\n"
 )
 
 
@@ -159,6 +151,40 @@ def extract_data_from_report(
     return profiling_data
 
 
+Sample = tuple[int, Sequence[Any], list[utils.ActionData]]
+
+
+def _group_samples(
+    profiling_data: dict[str, list[utils.ActionData]],
+    configs: List[Tuple[Any, ...]],
+    iterations: int,
+    invocations: Mapping[str, _session.Invocation],
+) -> dict[str, list[Sample]]:
+    groups: dict[str, list[Sample]] = {}
+    unknown = profiling_data.keys() - invocations.keys()
+    if unknown:
+        raise RuntimeError(
+            f"Profile contains unknown annotation executions: {sorted(unknown)}"
+        )
+    if not invocations:
+        raise RuntimeError(
+            "No kernels were profiled: no annotations were executed during profiling"
+        )
+    for marker, invocation in invocations.items():
+        kernels = profiling_data.get(marker, [])
+        if not kernels:
+            raise RuntimeError(
+                f"No kernels were profiled for annotation {invocation.annotation!r}, "
+                f"config {invocation.config_index}, run {invocation.run_index} "
+                "(the region may be empty or all kernels may have been filtered)"
+            )
+        idx = invocation.config_index * iterations + invocation.run_index
+        config = configs[invocation.config_index]
+        conf = (config,) if is_scalar(config) else config
+        groups.setdefault(invocation.annotation, []).append((idx, conf, kernels))
+    return groups
+
+
 def extract_df_from_data(
     profiling_data: dict[str, list[utils.ActionData]],
     metrics: Sequence[str],
@@ -172,6 +198,8 @@ def extract_df_from_data(
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
     info_prefix: str | None = None,
+    *,
+    invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
     """
     Aggregates raw per-annotation measurements (from either tool) into a pandas
@@ -185,6 +213,7 @@ def extract_df_from_data(
         func: Function representing the kernel launch with parameter signature.
         derive_metric: Function to transform the raw metric values with config values.
         verbosity: Controls display of extraction progress.
+        invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
 
     Returns:
@@ -259,74 +288,25 @@ def extract_df_from_data(
     # Create arrays for custom info collectors
     custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
 
-    # Without this check, a session in which no kernel could be attributed to
-    # any annotation would silently return an empty DataFrame.
-    if not profiling_data:
-        raise RuntimeError(
-            "No kernels were profiled: no kernel launch could be attributed to "
-            "any nsight.annotate region. Check that each annotated region "
-            "launches at least one kernel and that no kernel launched in it is "
-            "listed in ignore_kernel_list."
-        )
-
-    for annotation, annotation_data in profiling_data.items():
+    samples = _group_samples(profiling_data, configs, iterations, invocations)
+    for annotation, annotation_samples in samples.items():
         if verbosity >= VerbosityLevel.INFO:
             print(f"[NSIGHT-PYTHON] Extracting {annotation} profiling data")
-
-        configs_repeated = [
-            (config,) if is_scalar(config) else config
-            for config in configs
-            for _ in range(iterations)
-        ]
-
-        if len(annotation_data) == 0:
-            raise RuntimeError("No kernels were profiled")
-        if len(annotation_data) % len(configs_repeated) != 0:
-            raise RuntimeError(
-                "Expect same number of kernels per run. "
-                f"Got average of {len(annotation_data) / len(configs_repeated)} per run "
-                f"in the {annotation} annotation.\n"
-                f"{_WARMUP_HINT}"
-            )
-        num_kernels = len(annotation_data) // len(configs_repeated)
-
-        if num_kernels > 1:
-            if combine_kernel_metrics is None:
+        for idx, conf, kernels in annotation_samples:
+            if len(kernels) > 1 and combine_kernel_metrics is None:
                 raise RuntimeError(
-                    (
-                        f"More than one ({len(annotation_data)} in {len(configs_repeated)} "
-                        f"runs, {num_kernels} per run on average) kernel is launched "
-                        f"within the {annotation} annotation.\n"
-                        "We expect one kernel per annotation.\n"
-                        "Try one of the following solutions:\n"
-                        "  - Use `replay_mode='range'` to profile the entire annotated range instead of individual kernels\n"
-                        "  - Use `combine_kernel_metrics = lambda x, y: ...` to combine the metrics of multiple kernels\n"
-                        "  - Add some of the kernels to the ignore_kernel_list\n"
-                        f"{_WARMUP_HINT}"
-                        "Kernels are:\n"
-                        + "\n".join(sorted(set(x.name for x in annotation_data)))
-                    )
+                    f"More than one (total={len(kernels)}) kernel is launched within "
+                    f"the {annotation} annotation (config {idx // iterations}, "
+                    f"run {idx % iterations}). Supply combine_kernel_metrics, "
+                    "use replay_mode='range', or filter with ignore_kernel_list. "
+                    "If the code autotunes, warm it up before profiling to exclude "
+                    "first-call work."
                 )
-
-            assert (
-                callable(combine_kernel_metrics)
-                and combine_kernel_metrics.__code__.co_argcount == 2
-            ), "Profiler error: combine_kernel_metrics must be a binary function"
-
-        # rewrite annotation_data to combine the kernels
-        action_data: list[utils.ActionData] = []
-        for data_tuple in utils.batched(annotation_data, num_kernels):
-            # Convert tuple to list for functools.reduce
-            batch_list: list[utils.ActionData] = list(data_tuple)
-            action_data.append(
-                functools.reduce(
-                    utils.ActionData.combine(combine_kernel_metrics), batch_list
-                )
+            if len(kernels) > 1 and not callable(combine_kernel_metrics):
+                raise TypeError("combine_kernel_metrics must be callable")
+            data = functools.reduce(
+                utils.ActionData.combine(combine_kernel_metrics), kernels
             )
-
-        for idx, (conf, data) in enumerate(
-            zip(configs_repeated, action_data, strict=True)
-        ):
             compute_clocks.append(data.compute_clock)
             memory_clocks.append(data.memory_clock)
             gpus.append(data.gpu)
@@ -544,6 +524,8 @@ def extract_df_from_report(
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
     info_prefix: str | None = None,
+    *,
+    invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
     """
     Extracts and aggregates profiling results from an NVIDIA Nsight Compute report.
@@ -556,6 +538,7 @@ def extract_df_from_report(
         func: Function representing the kernel launch with parameter signature.
         derive_metric: Function to transform the raw metric values with config values.
         ignore_kernel_list: Kernel names to ignore in the analysis.
+        invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
         verbosity: Controls display of extraction progress.
 
@@ -593,4 +576,5 @@ def extract_df_from_report(
         config_scope_columns,
         annotation_scope_columns,
         info_prefix,
+        invocations=invocations,
     )
