@@ -8,6 +8,9 @@ These tests verify the complete data flow from collection to DataFrame output,
 including edge cases and bugs that have been discovered.
 """
 
+import os
+import pickle
+from pathlib import Path
 from typing import Any
 
 from cuda.core import (  # pylint: disable=import-error
@@ -755,3 +758,55 @@ def test_column_ordering() -> None:
     assert df["_z_collector"].iloc[0] == "z_value"
     assert df["_a_collector_Avg"].iloc[0] == 1024  # 512 * 2
     assert df["n"].iloc[0] == 512
+
+
+# ============================================================================
+# Test: collected info is never loaded from the output directory
+# ============================================================================
+
+
+class _MarkerOnUnpickle:
+    """Creates ``path`` when unpickled, standing in for a malicious payload."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def __reduce__(self) -> tuple[Any, tuple[str, str]]:
+        return open, (self.path, "w")
+
+
+@nsight.experimental.collect(scope=nsight.CollectionScope.CONFIG)
+def _planted_file_config_value(n: int) -> int:
+    """Config collector whose values must come from this session."""
+    return n + 1
+
+
+def test_planted_collected_info_file_is_not_loaded(tmp_path: Path) -> None:
+    """A file planted under output_prefix must never be deserialized.
+
+    Earlier versions saved collected info to ``collected_info.pkl`` under
+    ``output_prefix`` and unpickled whatever was at that path during extraction.
+    If another user had planted a read-only file there, the write failed and
+    their payload ran in the profiling process.
+    """
+    marker = tmp_path / "payload_ran"
+    planted = tmp_path / "collected_info.pkl"
+    planted.write_bytes(pickle.dumps(_MarkerOnUnpickle(str(marker))))
+    planted.chmod(0o444)
+
+    @nsight.analyze.kernel(
+        configs=[(512,)],
+        runs=1,
+        verbosity=nsight.VerbosityLevel.SILENT,
+        info_collectors=[_planted_file_config_value],
+        output_prefix=os.path.join(str(tmp_path), ""),
+    )
+    def benchmark_planted_file(n: int) -> None:
+        with nsight.annotate("add"):
+            _launch_kernel_add(n)
+
+    results = benchmark_planted_file()
+    df = results.to_dataframe()
+
+    assert not marker.exists()
+    assert df["_planted_file_config_value_Avg"].iloc[0] == 513
