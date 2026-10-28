@@ -24,7 +24,8 @@ API Changes
 Fixes
 -----
 
-- **Custom info is no longer read back from the output directory**:
+- **Custom info is no longer read back from the output directory**
+  (`#86 <https://github.com/NVIDIA/nsight-python/pull/86>`_):
   Values gathered by ``info_collectors`` are now passed from collection to
   extraction in memory. Previously they were saved to ``collected_info.pkl``
   under ``output_prefix`` and loaded from that path, so a file already at that
