@@ -213,13 +213,20 @@ def main() -> None:
         torch.testing.assert_close(my_softmax(x), torch.softmax(x, dim=1))
 
     df = bench().to_dataframe()  # configs supply the arguments
-    print(df[["Annotation", "rows", "cols", "Metric", "AvgValue", "RelativeStdDevPct"]])
+    columns = ["Annotation", "rows", "cols", "Metric", "AvgValue", "RelativeStdDevPct"]
+    print(df[columns].to_string(index=False))
 
 
 if __name__ == "__main__":
     main()
 ```
 
+- A candidate written as several PyTorch ops launches several kernels and
+  raises the more-than-one-kernel error. To time it as a whole, pass
+  `combine_kernel_metrics=lambda a, b: a + b`. Summing is right for times and
+  counts, but not for percentages or rates such as
+  `*.pct_of_peak_sustained_elapsed`, so profile those per kernel or in a
+  separate run.
 - Validate every candidate with a dtype-appropriate tolerance **before**
   accepting its timing. Report incorrect candidates separately from profiling
   failures. Faster but wrong is not an improvement.
