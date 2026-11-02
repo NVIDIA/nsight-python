@@ -41,14 +41,26 @@ Do not invent parameters, result columns, metric names, or units.
 ## Before running anything
 
 - Check `nvidia-smi` and `ncu --version` against the runtime requirements.
-  Many machines have an older `ncu` from a CUDA toolkit first on `PATH`.
+  Many machines have an older `ncu` from a CUDA toolkit first on `PATH`. List
+  every `ncu` on `PATH` with `which -a ncu` (Linux) or `where.exe ncu`
+  (Windows).
 - An older or missing `ncu` does not fail at `import nsight`. The error is
   stored and raised on the first call to a decorated function.
-- Non-admin profiling needs GPU performance counters unrestricted (on Linux,
-  `RmProfilingAdminOnly: 0` in `/proc/driver/nvidia/params`). Do not change
-  driver settings, add capabilities, or use `sudo` to get around this. Report
-  it instead.
-- Headless runs: set `MPLBACKEND=Agg` when using `@nsight.analyze.plot`.
+- Non-admin profiling needs access to GPU performance counters. If they are
+  restricted to administrators, `ncu` fails with `ERR_NVGPUCTRPERM`. On Linux
+  you can check beforehand: `/proc/driver/nvidia/params` shows
+  `RmProfilingAdminOnly: 0` when access is open. On Windows the setting is in
+  the NVIDIA Control Panel (Developer > Manage GPU Performance Counters). Do
+  not change driver settings or the Control Panel setting, add capabilities,
+  or run as root or administrator to get around this. Report it instead.
+- Headless runs: set the matplotlib backend to `Agg` when using
+  `@nsight.analyze.plot` (`export MPLBACKEND=Agg` on Linux,
+  `$env:MPLBACKEND = "Agg"` in PowerShell). This matters most on Windows,
+  where matplotlib defaults to a GUI backend even without a display.
+- On Windows, a Python process that loaded NCU can abort at exit with code
+  `0xC0000409` after all its work has finished. Judge success from the
+  program's own output (for example pytest's summary line), not only from
+  the exit code. CI works around this in `.github/workflows/ci.yaml`.
 - `UserWarning: Nsight Python Thermovision is not supported on this machine`
   is harmless. Thermal throttling protection is simply off on that GPU.
 
@@ -117,10 +129,12 @@ kernels), `torch.compile`, and library heuristics that probe on first use.
 
 ## CUPTI backend (experimental)
 
-Opt in with `NSPY_NCU_INIT_AT_IMPORT=0` before `import nsight`, then call
+Opt in by setting `NSPY_NCU_INIT_AT_IMPORT=0` before `import nsight` (in the
+shell, or with `os.environ` at the top of the script), then call
 `nsight.activate(nsight.Tool.CUPTI)`. It has lower overhead than NCU for
-timing-only loops. Check `docs/source/tools.rst` for supported platforms,
-metrics and limitations. Rules that are not written down there:
+timing-only loops. Check `docs/source/tools.rst` for supported platforms
+(currently not Windows), metrics and limitations. Rules that are not written
+down there:
 
 - **Activate CUPTI before importing torch.** If `torch` is imported before
   `nsight.activate(nsight.Tool.CUPTI)` *and* a CUDA context is created before
@@ -211,7 +225,9 @@ def bench(rows: int, cols: int) -> None:
 - Assume the GPU is shared. Do not kill other processes, lock clocks with
   `nvidia-smi`, change power limits, or start background profiling jobs. Use
   `clock_control="base"` (via ncu) only if asked.
-- Run with a time limit (for example `timeout 600 python ...` on Linux).
+- Run with a time limit: your tool's command timeout, or
+  `timeout 600 python ...` on Linux. Windows has no direct equivalent
+  (`timeout.exe` only waits), so rely on the tool's timeout there.
   Smoke-test with one config before a sweep.
 - If the GPU or `ncu` is unavailable, run lint and any CPU-only checks, then
   state exactly what was not verified. Never report a GPU test as passing
@@ -250,7 +266,7 @@ hatch run lint:format              # apply black + isort
 hatch run docs:build               # sphinx-build -W (warnings are errors)
 pytest tests -v                    # unit/integration tests (GPU + ncu)
 pytest examples -v                 # runs every example's main()
-pytest -v --tool-init=cupti        # same suites on the CUPTI backend
+pytest -v --tool-init=cupti        # same suites on the CUPTI backend (not on Windows)
 hatch run test_cu13:run            # what CI runs
 ```
 
