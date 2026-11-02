@@ -85,7 +85,8 @@ These facts decide how to write benchmark functions correctly:
    `torch.randn` outside annotations is not profiled. Annotation names must be
    unique per run, and annotations cannot be nested.
 4. **One kernel per annotation by default.** More than one raises
-   `RuntimeError: More than one (total=N) kernel is launched...`. Options are
+   `RuntimeError: More than one (N in R runs, X per run on average) kernel is
+   launched within the <name> annotation`. Options are
    `combine_kernel_metrics=lambda a, b: a + b`, `ignore_kernel_list=[...]`, or
    `replay_mode="range"`. Every annotation must launch the **same number of
    kernels in every run and config**. The check is only
@@ -107,8 +108,9 @@ These facts decide how to write benchmark functions correctly:
   test with a 4-config autotuner this produced 58 kernels over 2 runs in one
   annotation, which raises `RuntimeError: More than one ... kernel is launched`.
   Before the decorated call, call the kernel once for **every shape** in
-  `configs` so the autotune cache is warm. Don't use the error's other
-  suggestions (`combine_kernel_metrics`, range replay) for this case.
+  `configs` so the autotune cache is warm. The error suggests this too.
+  Follow that suggestion, not the error's others (`combine_kernel_metrics`,
+  range replay, `ignore_kernel_list`), for this case.
 - JIT compilation on first call launches no kernels and is safe inside an
   annotation, but warming up outside keeps runs uniform.
 - Kernel names in results are the `@triton.jit` function name, for example
@@ -133,8 +135,10 @@ timing-only loops (no replay, no `ncu` subprocess), but:
   `nsight.activate(nsight.Tool.CUPTI)` *and* a CUDA context is created before
   the first decorated call, no driver launch records arrive. Any torch op,
   tensor allocation, Triton launch or `torch.cuda.init()` creates a context.
-  Every profiled call in that process then raises `RuntimeError: No kernels
-  were profiled`, even though the annotated code did launch kernels. Set the
+  Since 1.1.1, every profiled call in that process then raises
+  `RuntimeError: No kernels were profiled: no kernel launch could be
+  attributed to any nsight.annotate region`, even though the annotated code
+  did launch kernels. In 1.1.0 it returned an empty DataFrame instead. Set the
   environment variable and activate CUPTI before `import torch`. Then warm-up
   and correctness checks can run anywhere. Importing Triton or `cuda.core`
   first is fine.
