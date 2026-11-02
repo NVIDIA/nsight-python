@@ -53,10 +53,11 @@ Do not invent parameters, result columns, metric names, or units.
   the NVIDIA Control Panel (Developer > Manage GPU Performance Counters). Do
   not change driver settings or the Control Panel setting, add capabilities,
   or run as root or administrator to get around this. Report it instead.
-- Headless runs: set the matplotlib backend to `Agg` when using
-  `@nsight.analyze.plot` (`export MPLBACKEND=Agg` on Linux,
-  `$env:MPLBACKEND = "Agg"` in PowerShell). This matters most on Windows,
-  where matplotlib defaults to a GUI backend even without a display.
+- On Windows, set `$env:MPLBACKEND = "Agg"` (PowerShell) before using
+  `@nsight.analyze.plot` in a non-interactive run. matplotlib defaults to the
+  TkAgg GUI backend there, and plotting fails where Tk is unusable, as on
+  the CI runners. On Linux, matplotlib falls back to `Agg` by itself when
+  there is no display.
 - On Windows, a Python process that loaded NCU can abort at exit with code
   `0xC0000409` after all its work has finished. Judge success from the
   program's own output (for example pytest's summary line), not only from
@@ -87,9 +88,10 @@ These facts decide how to write benchmark functions correctly:
    `total % (configs * runs) == 0`, so varying counts can pass and give wrong
    numbers.
 5. **NCU replays each kernel** with caches flushed (`cache_control="all"`,
-   the default; `"none"` keeps caches warm) and measures it in isolation. `gpu__time_duration.sum` is per-kernel GPU
-   time in ns. It does not include launch overhead or host time, and it is
-   not end-to-end wall-clock.
+   the default; `"none"` keeps caches warm) and measures it in isolation.
+   `gpu__time_duration.sum` is per-kernel GPU time in ns. It does not
+   include launch overhead or host time, and it is not end-to-end
+   wall-clock.
 6. Output goes to a fresh `nspy_*` directory in the system temp directory
    unless `output_prefix` is set.
 
@@ -120,7 +122,8 @@ kernels), `torch.compile`, and library heuristics that probe on first use.
 
 ## Failures inside annotations
 
-- An exception inside an annotation propagates unchanged by default.
+- By default, an exception inside an annotation stops the whole profiling
+  call, so one failing candidate aborts a sweep.
 - With `nsight.annotate(name, ignore_failures=True)`, the failed run gets
   `NaN`, so the row can show `AvgValue=NaN`, `NumRuns=0` and
   `Kernel="dummy_kernel_failure"`. The exception itself is reported only as a
@@ -145,8 +148,9 @@ down there:
   and correctness checks can run anywhere once CUPTI is active. Importing
   Triton or `cuda.core` first is fine. (Observed with cupti-python 13.4 and
   PyTorch 2.12.)
-- Without cache flushing, short kernels vary much more between runs than
-  under NCU. Check `RelativeStdDevPct` before trusting a difference.
+- CUPTI ignores `cache_control`, so caches are not flushed between runs and
+  short kernels vary much more than under NCU. Check `RelativeStdDevPct`
+  before trusting a difference.
 
 ## Reading results
 
