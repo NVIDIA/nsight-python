@@ -86,8 +86,8 @@ These facts decide how to write benchmark functions correctly:
    kernels in every run and config**. The check is only
    `total % (configs * runs) == 0`, so varying counts can pass and give wrong
    numbers.
-5. **NCU replays each kernel** with caches flushed (`cache_control="all"`)
-   and measures it in isolation. `gpu__time_duration.sum` is per-kernel GPU
+5. **NCU replays each kernel** with caches flushed (`cache_control="all"`,
+   the default; `"none"` keeps caches warm) and measures it in isolation. `gpu__time_duration.sum` is per-kernel GPU
    time in ns. It does not include launch overhead or host time, and it is
    not end-to-end wall-clock.
 6. Output goes to a fresh `nspy_*` directory in the system temp directory
@@ -95,8 +95,8 @@ These facts decide how to write benchmark functions correctly:
 
 ## Warm up first-call work
 
-Code that does extra work on its first call breaks the one-kernel-per-
-annotation rule and makes runs non-uniform. Examples are Triton
+Code that does extra work on its first call breaks the
+one-kernel-per-annotation rule and makes runs non-uniform. Examples are Triton
 `@triton.autotune` (which benchmarks every config, launching dozens of
 kernels), `torch.compile`, and library heuristics that probe on first use.
 
@@ -175,8 +175,8 @@ rather than assuming columns. Interpretation rules:
 
 ## Writing benchmarks
 
-Use this shape. Validate first, then profile with a small, bounded
-configuration set:
+Use this shape. Warm up and validate first, outside profiling, then profile
+with a small, bounded configuration set:
 
 ```python
 import torch  # importing torch does not initialize CUDA
@@ -186,8 +186,7 @@ import nsight  # must be imported before the first CUDA call
 SHAPES = [(4096, 1024), (4096, 4096)]
 
 
-def check(candidate, ref) -> None:  # outside profiling
-    torch.testing.assert_close(candidate, ref, atol=..., rtol=...)
+def my_softmax(x: torch.Tensor) -> torch.Tensor: ...  # the candidate to evaluate
 
 
 @nsight.analyze.kernel(
@@ -204,6 +203,21 @@ def bench(rows: int, cols: int) -> None:
         torch.softmax(x, dim=1)
     with nsight.annotate("candidate"):
         my_softmax(x)
+
+
+def main() -> None:
+    # Warm up and validate every shape outside profiling. assert_close picks
+    # tolerances from the dtype; pass atol/rtol if the candidate needs looser.
+    for rows, cols in SHAPES:
+        x = torch.randn(rows, cols, device="cuda")
+        torch.testing.assert_close(my_softmax(x), torch.softmax(x, dim=1))
+
+    df = bench().to_dataframe()  # configs supply the arguments
+    print(df[["Annotation", "rows", "cols", "Metric", "AvgValue", "RelativeStdDevPct"]])
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 - Validate every candidate with a dtype-appropriate tolerance **before**
@@ -259,13 +273,20 @@ def bench(rows: int, cols: int) -> None:
 
 The hatch environments are defined in `pyproject.toml`. CI runs the same ones.
 
+Tests and examples also need pytest and a CUDA build of PyTorch, which are
+not package dependencies (CI installs PyTorch separately; the hatch test
+environments use system packages). Some examples need Triton or cuTile and
+are skipped without them.
+
 ```bash
 pip install -e ".[cu13]"           # or [cu12]; add ,cupti for the CUPTI backend
+pip install pytest torch           # pick the torch build matching your CUDA, see pytorch.org
 hatch run lint:check               # black --check, isort --check, mypy --strict (whole repo, incl. examples/tests)
 hatch run lint:format              # apply black + isort
 hatch run docs:build               # sphinx-build -W (warnings are errors)
 pytest tests -v                    # unit/integration tests (GPU + ncu)
 pytest examples -v                 # runs every example's main()
+pytest tests/test_profiler.py::test_name -v   # one test
 pytest -v --tool-init=cupti        # same suites on the CUPTI backend (not on Windows)
 hatch run test_cu13:run            # what CI runs
 ```
@@ -273,7 +294,9 @@ hatch run test_cu13:run            # what CI runs
 - `mypy --strict` covers `examples/` and `tests/` too. Annotate every
   function. Use the existing `# type: ignore[untyped-decorator]` on
   `@triton.jit` and `@pytest.mark.*` decorators.
-- `scripts/git-hooks/pre-commit` runs `hatch run lint:check`.
+- `scripts/git-hooks/pre-commit` runs `hatch run lint:check`. Enable it with
+  `git config core.hooksPath scripts/git-hooks`, unless the user has their own
+  hooks set up.
 - Follow `Contributing.md` for commit sign-off and title format.
 
 ## Adding an example
