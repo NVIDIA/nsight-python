@@ -5,8 +5,6 @@
 Tests for the info_collector module.
 """
 
-import builtins
-import pickle
 import threading
 import warnings
 from typing import Any
@@ -98,7 +96,7 @@ class TestExperimentalCollect:
             nsight.experimental.collect(scope="invalid")
 
 
-def test_profile_session_scope_invocation_counts(tmp_path: Any) -> None:
+def test_profile_session_scope_invocation_counts() -> None:
     """CONFIG runs once per config, while RUN and ANNOTATION run repeatedly."""
     calls: dict[str, list[Any]] = {
         "once": [],
@@ -138,7 +136,6 @@ def test_profile_session_scope_invocation_counts(tmp_path: Any) -> None:
             ("run", collect_run, "run"),
             ("annotation", collect_annotation, "annotation"),
         ],
-        output_prefix=f"{tmp_path}/",
     )
 
     assert calls["once"] == [None]
@@ -155,7 +152,7 @@ def test_profile_session_scope_invocation_counts(tmp_path: Any) -> None:
     assert info_collector.collect_for_annotation("after_profile") == {}
 
 
-def test_profile_session_resets_failure_warnings(tmp_path: Any) -> None:
+def test_profile_session_resets_failure_warnings() -> None:
     """The same failing collector warns once in each profiling session."""
 
     def failing_collector() -> None:
@@ -173,58 +170,41 @@ def test_profile_session_resets_failure_warnings(tmp_path: Any) -> None:
                 verbosity=nsight.VerbosityLevel.SILENT,
                 thermal_mode="off",
                 info_collectors_list=[("failing", failing_collector, "run")],
-                output_prefix=f"{tmp_path}/",
             )
 
     assert len(warnings_list) == 2
 
 
-def test_non_picklable_collector_value_is_sanitized(tmp_path: Any) -> None:
-    """Only the non-picklable value is replaced before writing the file."""
-    info_file = tmp_path / "collected_info.pkl"
-    collected_info: list[dict[str, Any]] = [
-        {
-            "config": (),
-            "run_idx": 0,
-            "once_info": {"good": "value", "bad": lambda: None},
-            "config_info": {},
-            "annotation_info": [],
-        }
+def test_profile_session_returns_collected_info_in_memory() -> None:
+    """Collected info is returned unchanged rather than round-tripped via a file.
+
+    Values that cannot be serialized, such as a lambda, are kept as-is.
+    """
+    unserializable = lambda: None  # noqa: E731
+
+    def kernel(value: int) -> None:
+        pass
+
+    collected = core.run_profile_session(
+        kernel,
+        [(1,), (2,)],
+        runs=2,
+        verbosity=nsight.VerbosityLevel.SILENT,
+        thermal_mode="off",
+        info_collectors_list=[
+            ("once", lambda: unserializable, "once"),
+            ("config", lambda value: value * 10, "config"),
+        ],
+    )
+
+    assert [(run["config"], run["run_idx"]) for run in collected] == [
+        ((1,), 0),
+        ((1,), 1),
+        ((2,), 0),
+        ((2,), 1),
     ]
-
-    with pytest.warns(RuntimeWarning, match="not picklable"):
-        saved = core._save_collected_info(
-            str(info_file), collected_info, nsight.VerbosityLevel.SILENT
-        )
-
-    assert saved
-    with info_file.open("rb") as file:
-        saved_info = pickle.load(file)
-    assert saved_info[0]["once_info"] == {"good": "value", "bad": None}
-
-
-def test_collected_info_io_failure_is_reported_separately(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A disk write failure is not reported as a non-picklable value."""
-
-    def fail_open(*args: Any, **kwargs: Any) -> Any:
-        del args, kwargs
-        raise OSError("disk full")
-
-    monkeypatch.setattr(builtins, "open", fail_open)
-
-    with pytest.warns(
-        RuntimeWarning, match="Failed to save.*disk full"
-    ) as warnings_list:
-        saved = core._save_collected_info(
-            "/unwritable/collected_info.pkl",
-            [],
-            nsight.VerbosityLevel.SILENT,
-        )
-
-    assert not saved
-    assert "not picklable" not in str(warnings_list[0].message)
+    assert all(run["once_info"] == {"once": unserializable} for run in collected)
+    assert [run["config_info"]["config"] for run in collected] == [10, 10, 20, 20]
 
 
 class TestCollectorIntegration:

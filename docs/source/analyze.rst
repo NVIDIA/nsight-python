@@ -74,10 +74,24 @@ still requires one kernel per annotation execution.
 
 Skipped annotations do not produce samples. An annotation that is entered but
 contains no profiled kernels, including when all its kernels are filtered out,
-raises an error identifying the configuration and run. Failed executions
-suppressed with ``ignore_failures=True`` remain missing measurements.
+produces a missing (NaN) sample and a warning identifying the configuration
+and run. Other valid samples are retained. Failed executions
+suppressed with ``ignore_failures=True`` remain missing measurements. NCU
+still requires at least one profiled kernel in the capture to create a report.
 
 Result tables retain the supplied annotation names. Raw NVTX labels in profiler
 reports include a private execution suffix so results can be attributed without
 assuming equal kernel counts. The processed ``Kernel`` column describes the
 first sample's kernel sequence; inspect raw samples when sequences vary.
+
+Different worker threads may use the same annotation name. Their kernels are
+combined into one sample for that annotation, configuration and run, preserving
+launch order within each thread and using annotation registration order between
+threads. Annotation names must remain unique within each thread and run. Join
+worker threads before the profiled function returns. Entering an annotation
+outside a profiled configuration/run raises immediately.
+
+The execution-label mapping exists only in memory. A saved ``.ncu-rep`` alone
+is therefore insufficient for later extraction: ``extract_df_from_report``
+also requires the matching ``invocations`` mapping. Save the returned results
+or exported CSVs when you need to inspect results later.

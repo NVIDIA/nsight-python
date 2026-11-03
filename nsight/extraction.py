@@ -14,10 +14,10 @@ Functions:
     extract_data_from_report(report_path, metrics, func, ignore_kernel_list, verbosity):
         Loads an NVIDIA Nsight Compute report and returns a dict of raw per-annotation measurements.
 
-    extract_df_from_data(profiling_data, metrics, configs, iterations, func, derive_metric, verbosity, combine_kernel_metrics=None):
+    ``extract_df_from_data(profiling_data, metrics, configs, iterations, func, derive_metric, verbosity, combine_kernel_metrics=None, info_collectors_list=None, config_scope_columns=None, annotation_scope_columns=None, collected_info_per_run=None, *, invocations)``:
         Aggregates raw per-annotation measurements (from either tool) into a pandas DataFrame.
 
-    extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, verbosity, combine_kernel_metrics=None):
+    ``extract_df_from_report(report_path, metrics, configs, iterations, func, derive_metric, ignore_kernel_list, verbosity, combine_kernel_metrics=None, info_collectors_list=None, config_scope_columns=None, annotation_scope_columns=None, collected_info_per_run=None, *, invocations)``:
         Processes the full NVIDIA Nsight Compute report and returns a pandas DataFrame containing performance metrics.
 """
 
@@ -160,7 +160,7 @@ def _group_samples(
     iterations: int,
     invocations: Mapping[str, _session.Invocation],
 ) -> dict[str, list[Sample]]:
-    groups: dict[str, list[Sample]] = {}
+    groups: dict[str, dict[int, Sample]] = {}
     unknown = profiling_data.keys() - invocations.keys()
     if unknown:
         raise RuntimeError(
@@ -173,16 +173,43 @@ def _group_samples(
     for marker, invocation in invocations.items():
         kernels = profiling_data.get(marker, [])
         if not kernels:
-            raise RuntimeError(
+            warnings.warn(
                 f"No kernels were profiled for annotation {invocation.annotation!r}, "
                 f"config {invocation.config_index}, run {invocation.run_index} "
-                "(the region may be empty or all kernels may have been filtered)"
+                "(the region may be empty, filtered, or unclosed). "
+                "Recording a missing sample if no other thread profiled kernels "
+                "for this annotation/config/run.",
+                RuntimeWarning,
+                stacklevel=2,
             )
         idx = invocation.config_index * iterations + invocation.run_index
         config = configs[invocation.config_index]
         conf = (config,) if is_scalar(config) else config
-        groups.setdefault(invocation.annotation, []).append((idx, conf, kernels))
-    return groups
+        samples = groups.setdefault(invocation.annotation, {})
+        if idx in samples:
+            samples[idx][2].extend(kernels)
+        else:
+            samples[idx] = (idx, conf, list(kernels))
+    return {name: list(samples.values()) for name, samples in groups.items()}
+
+
+def _validate_reducer(reducer: Callable[..., Any]) -> None:
+    if not callable(reducer):
+        raise TypeError(
+            "combine_kernel_metrics must be callable and accept two arguments"
+        )
+    try:
+        signature = inspect.signature(reducer)
+    except (TypeError, ValueError):
+        # Some extension callables (e.g. numpy ufuncs) have no Python signature.
+        # Their call errors are contextualized below without invoking them twice.
+        return
+    try:
+        signature.bind(object(), object())
+    except TypeError as exc:
+        raise TypeError(
+            "combine_kernel_metrics must accept two positional arguments"
+        ) from exc
 
 
 def extract_df_from_data(
@@ -197,7 +224,7 @@ def extract_df_from_data(
     info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
-    info_prefix: str | None = None,
+    collected_info_per_run: Sequence[Mapping[str, Any]] | None = None,
     *,
     invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
@@ -215,6 +242,11 @@ def extract_df_from_data(
         verbosity: Controls display of extraction progress.
         invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
+        info_collectors_list: Custom info collectors as ``(name, callback, scope)``.
+        config_scope_columns: Collector columns that vary per config or run.
+        annotation_scope_columns: Collector columns that vary per annotation.
+        collected_info_per_run: Custom info collected for each run, in run order,
+            as returned by :func:`nsight.collection.core.run_profile_session`.
 
     Returns:
         A DataFrame containing the extracted and transformed performance data.
@@ -239,6 +271,8 @@ def extract_df_from_data(
     units: List[List[str]] = []
 
     sig = inspect.signature(func)
+    if combine_kernel_metrics is not None:
+        _validate_reducer(combine_kernel_metrics)
 
     # Create a new array for each regular argument in the signature (exclude *args/**kwargs)
     arg_arrays: dict[str, list[Any]] = {
@@ -248,47 +282,27 @@ def extract_df_from_data(
         not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
     }
 
-    # Load collected info from the pickle file if it exists
-    collected_info_per_run = []
     custom_info_names = set()
     if info_collectors_list:
-        # The caller supplies the prefix so the read path matches the
-        # collection-session write path exactly.
-        if info_prefix is None:
-            info_prefix = ""
-
         # Column names come from the collector metadata (authoritative), not from
         # the first run's collected data. Deriving from run 0 dropped any
         # annotation-scope collector whose annotation was not entered on run 0.
         custom_info_names = {name for name, _callback, _scope in info_collectors_list}
-
-        info_file = f"{info_prefix}collected_info.pkl"
-        if os.path.exists(info_file):
-            import pickle
-
-            with open(info_file, "rb") as f:
-                collected_info_per_run = pickle.load(f)
-            if not isinstance(collected_info_per_run, list):
-                warnings.warn(
-                    f"Collected info file {info_file} is malformed "
-                    f"(expected a list, got {type(collected_info_per_run).__name__}); "
-                    "ignoring custom info.",
-                    category=RuntimeWarning,
-                    stacklevel=2,
-                )
-                collected_info_per_run = []
-            elif verbosity >= VerbosityLevel.INFO:
-                print(f"[NSIGHT-PYTHON] Loaded collected info from {info_file}")
-        else:
-            if verbosity >= VerbosityLevel.INFO:
-                print(
-                    f"[NSIGHT-PYTHON] Warning: No collected info file found at {info_file}"
-                )
+    else:
+        collected_info_per_run = None
 
     # Create arrays for custom info collectors
     custom_info_arrays: dict[str, list[Any]] = {name: [] for name in custom_info_names}
 
     samples = _group_samples(profiling_data, configs, iterations, invocations)
+    # Empty runs inherit metadata only from another run of the same config and
+    # annotation. Never guess a GPU identity from a different configuration.
+    metadata = {
+        (name, idx // iterations): kernels[0]
+        for name, executions in samples.items()
+        for idx, _conf, kernels in executions
+        if kernels
+    }
     for annotation, annotation_samples in samples.items():
         if verbosity >= VerbosityLevel.INFO:
             print(f"[NSIGHT-PYTHON] Extracting {annotation} profiling data")
@@ -300,13 +314,29 @@ def extract_df_from_data(
                     f"run {idx % iterations}). Supply combine_kernel_metrics, "
                     "use replay_mode='range', or filter with ignore_kernel_list. "
                     "If the code autotunes, warm it up before profiling to exclude "
-                    "first-call work."
+                    "first-call work.\nKernels are:\n"
+                    + "\n".join(sorted({kernel.name for kernel in kernels}))
                 )
-            if len(kernels) > 1 and not callable(combine_kernel_metrics):
-                raise TypeError("combine_kernel_metrics must be callable")
-            data = functools.reduce(
-                utils.ActionData.combine(combine_kernel_metrics), kernels
-            )
+            if not kernels:
+                template = metadata.get((annotation, idx // iterations))
+                data = utils.ActionData(
+                    name="",
+                    values=None,
+                    compute_clock=template.compute_clock if template else 0,
+                    memory_clock=template.memory_clock if template else 0,
+                    gpu=template.gpu if template else "",
+                    units=template.units if template else [""] * len(metrics),
+                )
+            else:
+                try:
+                    data = functools.reduce(
+                        utils.ActionData.combine(combine_kernel_metrics), kernels
+                    )
+                except TypeError as exc:
+                    raise TypeError(
+                        f"combine_kernel_metrics failed for annotation {annotation!r}, "
+                        f"config {idx // iterations}, run {idx % iterations}: {exc}"
+                    ) from exc
             compute_clocks.append(data.compute_clock)
             memory_clocks.append(data.memory_clock)
             gpus.append(data.gpu)
@@ -386,7 +416,9 @@ def extract_df_from_data(
 
             # gather remaining required data
             annotations.append(annotation)
-            all_values.append(tuple(values) if values is not None else None)
+            all_values.append(
+                tuple(values) if values is not None else (None,) * len(metrics)
+            )
             all_metrics.append(tuple(metrics))
             hostnames.append(socket.gethostname())
             # Add a field for every config argument
@@ -403,13 +435,12 @@ def extract_df_from_data(
             if (
                 collected_info_per_run
                 and idx < len(collected_info_per_run)
-                and isinstance(collected_info_per_run[idx], dict)
+                and isinstance(collected_info_per_run[idx], Mapping)
             ):
                 run_info = collected_info_per_run[idx]
-                # Add once info. Guard against pickle keys that are not in the
-                # metadata-derived custom_info_names (e.g. a stale collected_info
-                # .pkl written by a different set of collectors); such keys have
-                # no column and are ignored rather than raising KeyError.
+                # Add once info. Guard against keys that are not in the
+                # metadata-derived custom_info_names; such keys have no column
+                # and are ignored rather than raising KeyError.
                 for name, value in run_info.get("once_info", {}).items():
                     if name in custom_info_arrays:
                         custom_info_arrays[name].append(value)
@@ -523,7 +554,7 @@ def extract_df_from_report(
     info_collectors_list: List[Tuple[str, Callable[..., Any], str]] | None = None,
     config_scope_columns: List[str] | None = None,
     annotation_scope_columns: List[str] | None = None,
-    info_prefix: str | None = None,
+    collected_info_per_run: Sequence[Mapping[str, Any]] | None = None,
     *,
     invocations: Mapping[str, _session.Invocation],
 ) -> pd.DataFrame:
@@ -540,6 +571,11 @@ def extract_df_from_report(
         ignore_kernel_list: Kernel names to ignore in the analysis.
         invocations: Required mapping of internal labels to annotation/config/run identities.
         combine_kernel_metrics: Function to merge multiple kernel metrics.
+        info_collectors_list: Custom info collectors as ``(name, callback, scope)``.
+        config_scope_columns: Collector columns that vary per config or run.
+        annotation_scope_columns: Collector columns that vary per annotation.
+        collected_info_per_run: Custom info collected for each run, in run order,
+            as returned by :func:`nsight.collection.core.run_profile_session`.
         verbosity: Controls display of extraction progress.
 
     Returns:
@@ -557,12 +593,6 @@ def extract_df_from_report(
         verbosity,
     )
 
-    # Fall back to reconstructing the info prefix from the report directory for
-    # direct callers that did not supply one.
-    if info_collectors_list and info_prefix is None:
-        report_dir = os.path.dirname(report_path)
-        info_prefix = os.path.join(report_dir, "") if report_dir else ""
-
     return extract_df_from_data(
         profiling_data,
         metrics,
@@ -575,6 +605,6 @@ def extract_df_from_report(
         info_collectors_list,
         config_scope_columns,
         annotation_scope_columns,
-        info_prefix,
+        collected_info_per_run,
         invocations=invocations,
     )

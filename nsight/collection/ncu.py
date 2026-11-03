@@ -441,7 +441,7 @@ class NCUCollector(core.NsightCollector):
                 file was missing or could not be parsed (see
                 :func:`nsight.extraction.extract_df_from_report`).
             RuntimeError:
-                Report extraction found no kernels, a mismatch in kernel counts, or
+                Report extraction found no annotation executions, unknown labels, or
                 several kernels in one annotation without
                 ``combine_kernel_metrics`` (see :func:`nsight.extraction.extract_df_from_report`).
             TypeError, ValueError:
@@ -497,7 +497,7 @@ class NCUCollector(core.NsightCollector):
                     f"{len(configs_list)} configurations, {settings.runs} runs each",
                 )
 
-            core.run_profile_session(
+            collected_info_per_run = core.run_profile_session(
                 func,
                 configs_list,
                 settings.runs,
@@ -508,7 +508,6 @@ class NCUCollector(core.NsightCollector):
                 settings.thermal_timeout,
                 settings.thermal_device,
                 settings.info_collectors,
-                settings.output_prefix,
             )
         finally:
             try:
@@ -562,7 +561,7 @@ class NCUCollector(core.NsightCollector):
             settings.info_collectors,
             config_scope_columns,
             annotation_scope_columns,
-            info_prefix=settings.output_prefix or "",
+            collected_info_per_run=collected_info_per_run,
             invocations=_session.get_invocations(),
         )
 

@@ -84,6 +84,9 @@ def is_active_annotation(name: str) -> bool:
     Returns:
         True if the annotation name has been used, False otherwise.
     """
+    session_active = _session.is_active_annotation(name)
+    if session_active is not None:
+        return session_active
     if hasattr(_thread_local_storage, "used_annotation_names"):
         return name in _thread_local_storage.used_annotation_names
 
@@ -109,7 +112,8 @@ class annotate:
 
     Args:
         name: Name of the annotation to be used for profiling. Annotation names
-            must be unique within a single profiling run to ensure unambiguous results.
+            must be unique per thread within a single profiling run. Different
+            threads may reuse a name; their kernels form one sample.
         ignore_failures: Flag indicating whether to ignore
             failures in the annotate context. If set to ``True``, any exceptions
             raised within the context will be ignored, and the profiling will
@@ -121,9 +125,7 @@ class annotate:
     Raises:
         ValueError: If attempting to enter a nested annotation context, or if
             an annotation with the same name has already been used in this
-            profiling run. Nested annotations are not supported and annotation
-            names must be unique within a profiling run to avoid incorrect
-            profiling results.
+            thread and profiling run. Nested annotations are not supported.
     Note:
         All annotations are created under the NVTX domain ``"nsight-python"``.
         This domain is used internally to filter and identify Nsight Python

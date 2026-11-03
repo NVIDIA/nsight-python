@@ -4,7 +4,6 @@
 """Private execution identities shared by the collectors and annotations."""
 
 import threading
-import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -19,10 +18,9 @@ class Invocation:
 
 @dataclass
 class Session:
-    token: str
     invocations: dict[str, Invocation]
     current_run: tuple[int, int] | None = None
-    seen: set[str] = field(default_factory=set)
+    seen: set[tuple[threading.Thread, str]] = field(default_factory=set)
 
 
 _lock = threading.RLock()
@@ -36,7 +34,7 @@ def capture() -> Iterator[dict[str, Invocation]]:
     with _lock:
         if _active is not None:
             raise RuntimeError("Overlapping profiling sessions are not supported")
-        session = Session(uuid.uuid4().hex, {})
+        session = Session({})
         _active = session
     try:
         yield session.invocations
@@ -86,9 +84,18 @@ def marker_name(annotation: str) -> str:
             )
         config_index, run_index = _active.current_run
         invocation = Invocation(annotation, config_index, run_index)
-        if annotation in _active.seen:
+        key = (threading.current_thread(), annotation)
+        if key in _active.seen:
             raise ValueError(f"Annotation {annotation!r} was already used in this run")
-        _active.seen.add(annotation)
-        marker = f"{annotation} [nspy:{_active.token}:{len(_active.invocations)}]"
+        _active.seen.add(key)
+        marker = f"{annotation} [nspy:{len(_active.invocations)}]"
         _active.invocations[marker] = invocation
         return marker
+
+
+def is_active_annotation(annotation: str) -> bool | None:
+    """Use per-run thread state, including for persistent worker threads."""
+    with _lock:
+        if _active is None:
+            return None
+        return (threading.current_thread(), annotation) in _active.seen

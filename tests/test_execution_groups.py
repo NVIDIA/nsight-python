@@ -92,8 +92,10 @@ def test_missing_annotation_keeps_run_index_aligned() -> None:
 
 
 def test_empty_or_fully_filtered_invocation_is_explicit() -> None:
-    with pytest.raises(RuntimeError, match="annotation 'public', config 1, run 0"):
-        extract({}, {"empty": _session.Invocation("public", 1, 0)})
+    with pytest.warns(RuntimeWarning, match="annotation 'public', config 1, run 0"):
+        df = extract({}, {"empty": _session.Invocation("public", 1, 0)})
+    assert df.Value.isna().all()
+    assert df["size"].tolist() == [20]
 
 
 def test_unknown_execution_rejected() -> None:
@@ -129,7 +131,13 @@ def test_session_identities_and_cleanup() -> None:
 
     first = collect()
     second = collect()
-    assert not first.keys() & second.keys()
+    # Reports have their own mapping, so labels can restart from zero each session.
+    assert first == second
+    assert first is not second
+    assert list(first) == [
+        "same [nspy:looks-internal] [nspy:0]",
+        "same [nspy:looks-internal] [nspy:1]",
+    ]
     assert [x.config_index for x in first.values()] == [0, 1]
     assert all(x.annotation == "same [nspy:looks-internal]" for x in first.values())
     assert _session.marker_name("outside") == "outside"
@@ -258,3 +266,194 @@ def test_collector_context_covers_post_run_teardown() -> None:
 
     assert collector() is not None
     assert _session.marker_name("after collection") == "after collection"
+
+
+def test_empty_execution_retains_valid_runs_and_metadata() -> None:
+    identities = {str(i): _session.Invocation("public", 0, i) for i in range(2)}
+    with pytest.warns(RuntimeWarning, match="config 0, run 0"):
+        df = extract({"1": [action(7)]}, identities)
+    assert df.Value.isna().tolist() == [True, False]
+    assert df.Value.iloc[1] == 7
+    assert df.GPU.tolist() == ["GPU", "GPU"]
+    result = transformation.aggregate_data(
+        df, benchmark, None, utils.VerbosityLevel.SILENT
+    )
+    assert result.NumRuns.tolist() == [1]
+    assert result.AvgValue.tolist() == [7]
+
+
+def test_empty_config_does_not_inherit_another_gpus_metadata() -> None:
+    with pytest.warns(RuntimeWarning, match="config 1, run 0"):
+        df = extract(
+            {"valid": [action(7)]},
+            {
+                "valid": _session.Invocation("public", 0, 0),
+                "empty": _session.Invocation("public", 1, 0),
+            },
+        )
+    assert df.GPU.tolist() == ["GPU", ""]
+    assert df.Value.isna().tolist() == [False, True]
+
+
+def test_empty_sample_with_multiple_metrics() -> None:
+    with pytest.warns(RuntimeWarning, match="config 0, run 0"):
+        df = extraction.extract_df_from_data(
+            {},
+            ["time", "other"],
+            [(10,)],
+            1,
+            benchmark,
+            None,
+            utils.VerbosityLevel.SILENT,
+            invocations={"empty": _session.Invocation("public", 0, 0)},
+        )
+    assert df.Metric.tolist() == ["time", "other"]
+    assert df.Value.isna().all()
+
+
+def test_multiple_kernel_error_lists_sorted_unique_names() -> None:
+    with pytest.raises(RuntimeError) as error:
+        extract(
+            {"a": [action(1, "z"), action(2, "a"), action(3, "z")]},
+            {"a": _session.Invocation("public", 0, 0)},
+        )
+    assert "Kernels are:\na\nz" in str(error.value)
+
+
+@pytest.mark.parametrize("reducer", [lambda: 0, lambda x: x, lambda x, y, z: x])  # type: ignore[untyped-decorator]
+def test_invalid_reducer_reports_parameter(reducer: Any) -> None:
+    with pytest.raises(
+        TypeError, match="combine_kernel_metrics.*two positional arguments"
+    ):
+        extract(
+            {"a": [action(1), action(2)]},
+            {"a": _session.Invocation("public", 0, 0)},
+            combine_kernel_metrics=reducer,
+        )
+
+
+def test_reducers_support_builtins_partials_callable_objects_and_ufuncs() -> None:
+    import functools
+    import operator
+
+    class Adder:
+        def __call__(self, x: Any, y: Any) -> Any:
+            return x + y
+
+    def add_with_offset(x: Any, y: Any, offset: int) -> Any:
+        return x + y + offset
+
+    for reducer in [
+        operator.add,
+        Adder(),
+        functools.partial(add_with_offset, offset=0),
+        np.add,
+    ]:
+        df = extract(
+            {"a": [action(2), action(3)]},
+            {"a": _session.Invocation("public", 0, 0)},
+            combine_kernel_metrics=reducer,
+        )
+        assert df.Value.tolist() == [5]
+
+
+def test_extension_reducer_error_names_parameter() -> None:
+    from unittest.mock import patch
+
+    def bad_reducer(x: Any) -> Any:
+        return x
+
+    # Model an extension callable that does not expose a Python signature.
+    with patch("nsight.extraction._validate_reducer"):
+        with pytest.raises(
+            TypeError, match="combine_kernel_metrics failed.*config 0, run 0"
+        ):
+            extract(
+                {"a": [action(1), action(2)]},
+                {"a": _session.Invocation("public", 0, 0)},
+                combine_kernel_metrics=bad_reducer,
+            )
+
+
+def test_same_annotation_in_persistent_worker_threads_combines_per_run() -> None:
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import patch
+
+    from nsight import annotate
+
+    barrier = threading.Barrier(2)
+
+    def worker() -> None:
+        barrier.wait(timeout=5)
+        with annotate("gemm"):
+            pass
+
+    with (
+        patch("nsight.annotation.nvtx.start_range"),
+        patch("nsight.annotation.nvtx.end_range"),
+    ):
+        with (
+            _session.capture() as identities,
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            for i in range(2):
+                with _session.run(0, i):
+                    futures = [pool.submit(worker) for _ in range(2)]
+                    for future in futures:
+                        future.result(timeout=10)
+    assert len(identities) == 4
+    df = extract(
+        {key: [action(2)] for key in identities},
+        identities,
+        combine_kernel_metrics=lambda x, y: x + y,
+    )
+    assert df.Annotation.tolist() == ["gemm", "gemm"]
+    assert df.Value.tolist() == [4, 4]
+    result = transformation.aggregate_data(
+        df, benchmark, None, utils.VerbosityLevel.SILENT
+    )
+    assert result.NumRuns.tolist() == [2]
+
+
+def test_duplicate_annotation_in_same_thread_is_still_rejected() -> None:
+    with _session.capture(), _session.run(0, 0):
+        _session.marker_name("same")
+        with pytest.raises(ValueError, match="already used in this run"):
+            _session.marker_name("same")
+
+
+def test_in_memory_custom_info_keeps_skipped_run_alignment() -> None:
+    from nsight.collection import core
+
+    counter = iter(range(4))
+
+    def run_number(size: int) -> int:
+        return next(counter)
+
+    call = 0
+
+    def profiled(size: int) -> None:
+        nonlocal call
+        if call == 3:
+            _session.marker_name("public")
+        call += 1
+
+    with _session.capture() as identities:
+        collected = core.run_profile_session(
+            profiled,
+            [(10,), (20,)],
+            2,
+            utils.VerbosityLevel.SILENT,
+            "off",
+            info_collectors_list=[("run_value", run_number, "run")],
+        )
+    marker = next(iter(identities))
+    df = extract(
+        {marker: [action(9)]},
+        identities,
+        info_collectors_list=[("run_value", run_number, "run")],
+        collected_info_per_run=collected,
+    )
+    assert df["size"].tolist() == [20]
+    assert df.run_value.tolist() == [3]

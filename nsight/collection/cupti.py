@@ -100,8 +100,8 @@ def _build_annotation_intervals(markers: list[_MarkerRecord]) -> list[_Annotatio
         end = ends.get(marker_id)
         # An unclosed range is dropped rather than left open to the end of the
         # session: extending it would swallow every later launch and quietly
-        # mis-attribute them, whereas dropping it surfaces as a kernel-count
-        # error in extraction.
+        # misattribute them. Extraction warns about the missing execution and
+        # records a missing sample instead of discarding the other results.
         if end is None or not start.name:
             continue
         intervals.append(_Annotation(start.name, start.timestamp, end))
@@ -371,7 +371,7 @@ class CUPTICollector(core.NsightCollector):
             for cbid in _LAUNCH_CBIDS:
                 cupti.activity_enable_driver_api(cbid, 1)
 
-            core.run_profile_session(
+            collected_info_per_run = core.run_profile_session(
                 func,
                 configs_list,
                 settings.runs,
@@ -382,7 +382,6 @@ class CUPTICollector(core.NsightCollector):
                 settings.thermal_timeout,
                 settings.thermal_device,
                 settings.info_collectors,
-                settings.output_prefix,
             )
 
             # A kernel's activity record only exists once it has finished, so
@@ -449,7 +448,7 @@ class CUPTICollector(core.NsightCollector):
             settings.info_collectors,
             config_scope_columns,
             annotation_scope_columns,
-            info_prefix=settings.output_prefix or "",
+            collected_info_per_run=collected_info_per_run,
             invocations=_session.get_invocations(),
         )
 
