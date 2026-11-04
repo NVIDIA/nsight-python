@@ -501,7 +501,7 @@ def test_multiple_kernels_per_run() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Varying kernels per run tests (currently unsupported)
+# Varying kernels per run tests
 # ----------------------------------------------------------------------------
 
 
@@ -520,9 +520,8 @@ def varying_multiple_kernels_per_run(flag: bool) -> None:
             _ = a + b
 
 
-@pytest.mark.skip("don't yet support varying number of kernels per run")  # type: ignore[untyped-decorator]
 def test_varying_multiple_kernels_per_run() -> None:
-    """Test kernel with varying number of operations per run (currently unsupported)."""
+    """Test kernel with varying number of operations per run."""
     varying_multiple_kernels_per_run()
 
 
@@ -1644,3 +1643,97 @@ def test_tuple_typed_function_args_multiple_metrics() -> None:
             10,
             20,
         ), f"Row {idx}: pair should be (10, 20), got {df['pair'].iloc[idx]}"
+
+
+@pytest.mark.parametrize("counts", [(2, 3), (2, 4)])  # type: ignore[untyped-decorator]
+def test_variable_kernel_counts_have_correct_samples(counts: tuple[int, int]) -> None:
+    @nsight.analyze.kernel(
+        configs=counts,
+        runs=3,
+        thermal_mode="off",
+        combine_kernel_metrics=lambda a, b: a + b,
+    )
+    def variable_count(count: int) -> None:
+        a = torch.ones(256, device="cuda")
+        b = torch.empty_like(a)
+        with nsight.annotate("total"):
+            for _ in range(count):
+                torch.add(a, a, out=b)
+
+    df = variable_count().to_dataframe().sort_values("count")
+    assert df["count"].tolist() == list(counts)
+    assert df["NumRuns"].tolist() == [3, 3]
+    assert df["Annotation"].tolist() == ["total", "total"]
+    assert (df["Kernel"].str.count(r"\|") + 1).tolist() == list(counts)
+
+
+def test_kernel_counts_vary_between_runs(tmp_path: Any) -> None:
+    # Check per-run kernel sequences and aggregation without relying on
+    # noisy timing ratios. CPU tests verify the reducer with exact values.
+    call = 0
+    prefix = str(tmp_path / "vary-")
+
+    @nsight.analyze.kernel(
+        configs=[256],
+        runs=2,
+        thermal_mode="off",
+        verbosity=nsight.VerbosityLevel.SILENT,
+        combine_kernel_metrics=lambda left, right: 10 * left + right,
+        output_prefix=prefix,
+        output_csv=True,
+    )
+    def variable(size: int) -> None:
+        nonlocal call
+        device = Device()
+        device.set_current()
+        stream = device.create_stream()
+        module = Program(CUDA_KERNEL_CODE, "c++").compile("cubin")
+        add = module.get_kernel("vector_add")
+        multiply = module.get_kernel("vector_multiply")
+        buffers = [device.allocate(size * 4, stream=stream) for _ in range(3)]
+        config = LaunchConfig(grid=1, block=256)
+        with nsight.annotate("vary"):
+            for _ in range(1 if call == 0 else 2):
+                launch(stream, config, add, *buffers, size)
+                launch(stream, config, multiply, *buffers, size)
+        stream.sync()
+        call += 1
+
+    result = variable().to_dataframe()
+    raw = pd.read_csv(next(tmp_path.glob("vary-profiled_data-*.csv")))
+    counts = raw.Kernel.str.count(r"\|") + 1
+    assert counts.tolist() == [2, 4]
+    names = raw.Kernel.str.split("|").tolist()
+    assert names[0] == ["vector_add", "vector_multiply"]
+    assert names[1] == names[0] * 2
+    assert result.NumRuns.tolist() == [2]
+    assert result.Annotation.tolist() == ["vary"]
+    assert result.AvgValue.iloc[0] == pytest.approx(raw.Value.mean())
+
+
+def test_empty_annotation_run_preserves_gpu_samples(tmp_path: Any) -> None:
+    call = 0
+
+    @nsight.analyze.kernel(
+        configs=[256],
+        runs=3,
+        thermal_mode="off",
+        verbosity=nsight.VerbosityLevel.SILENT,
+        output_prefix=str(tmp_path / "empty-"),
+        output_csv=True,
+    )
+    def sometimes_empty(size: int) -> None:
+        nonlocal call
+        a = torch.ones(size, device="cuda")
+        b = torch.empty_like(a)
+        with nsight.annotate("sometimes"):
+            if call != 1:
+                torch.add(a, a, out=b)
+        call += 1
+
+    with pytest.warns(RuntimeWarning, match="annotation 'sometimes', config 0, run 1"):
+        result = sometimes_empty().to_dataframe()
+    raw = pd.read_csv(next(tmp_path.glob("empty-profiled_data-*.csv")))
+    assert raw.Value.isna().tolist() == [False, True, False]
+    assert result.NumRuns.tolist() == [2]
+    assert result.AvgValue.iloc[0] == pytest.approx(raw.Value.mean())

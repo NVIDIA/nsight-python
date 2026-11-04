@@ -180,7 +180,11 @@ class ActionData:
             assert lhs.units == rhs.units
             return ActionData(
                 name=f"{lhs.name}|{rhs.name}",
-                values=value_reduce_op(lhs.values, rhs.values),
+                values=(
+                    None
+                    if lhs.values is None or rhs.values is None
+                    else value_reduce_op(lhs.values, rhs.values)
+                ),
                 compute_clock=lhs.compute_clock,
                 memory_clock=lhs.memory_clock,
                 gpu=lhs.gpu,
