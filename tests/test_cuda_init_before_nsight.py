@@ -5,9 +5,6 @@
 This is used to test the scenario when a user initializes CUDA before importing nsight.
 NCU attach-mode requires CUDA to not be initialized before the injection library is loaded
 so profiling fails with an error like "Cuda is initialized before the tool".
-
-The test runs in a fresh subprocess via pytest-isolated, because nsight must not have
-been imported yet. The root conftest.py skips its tool setup in that subprocess.
 """
 
 import pytest
