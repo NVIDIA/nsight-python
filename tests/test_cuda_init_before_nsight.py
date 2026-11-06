@@ -14,7 +14,7 @@ import pytest
 import torch
 
 
-@pytest.mark.isolated
+@pytest.mark.isolated  # type: ignore[untyped-decorator]
 def test_cuda_init_before_nsight(request: pytest.FixtureRequest) -> None:
     """Profiling must fail with the expected error when CUDA is initialized first."""
     if request.config.getoption("--tool-init") == "cupti":
