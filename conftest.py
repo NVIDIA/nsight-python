@@ -12,7 +12,7 @@ _INIT_MODES = {
     "ncu-at-import": ("1", None),
     # Nothing is active up front, so nsight.analyze.kernel activates NCU on the
     # first call to a decorated function.
-    "none": ("0", None),
+    "ncu-lazy": ("0", None),
     # CUPTI is activated here instead; nsight must not claim NCU at import.
     "cupti": ("0", "cupti"),
 }
@@ -26,7 +26,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help=(
             "How the nsight tool is initialized for the suite. 'ncu-at-import' "
             "(the default) lets nsight activate NCU while it is imported. "
-            "'none' leaves no tool active so the lazy NCU load in "
+            "'ncu-lazy' leaves no tool active so the lazy NCU load in "
             "nsight.analyze.kernel is exercised on the first decorated call. "
             "'cupti' activates CUPTI before the suite runs. Only one tool can be "
             "active per process, so this mode fully determines both "
