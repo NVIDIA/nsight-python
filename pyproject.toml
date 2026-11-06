@@ -105,6 +105,7 @@ format = [
 dependencies = [
   "pytest",
   "pytest-cov",
+  "pytest-isolated",
 ]
 system-packages = true
 [tool.hatch.envs.test.scripts]

@@ -36,6 +36,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    # pytest-isolated re-runs selected tests in a fresh child pytest process
+    # with the same arguments. That child must start with nsight unimported and
+    # no tool active, since the isolated tests control import order themselves
+    # (e.g. initializing CUDA before importing nsight). The parent's
+    # NSPY_NCU_INIT_AT_IMPORT is inherited by the child through the environment.
+    if os.environ.get("PYTEST_RUNNING_IN_SUBPROCESS") == "1":
+        return
+
     init_at_import, tool_name = _INIT_MODES[config.getoption("--tool-init")]
 
     # Set before nsight is imported: it reads this while importing, which is why
