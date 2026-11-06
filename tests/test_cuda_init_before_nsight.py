@@ -15,17 +15,12 @@ import torch
 
 
 @pytest.mark.isolated  # type: ignore[untyped-decorator]
-def test_cuda_init_before_nsight(request: pytest.FixtureRequest) -> None:
+def test_cuda_init_before_nsight() -> None:
     """Profiling must fail with the expected error when CUDA is initialized first."""
-    if request.config.getoption("--tool-init") == "cupti":
-        pytest.skip(
-            "NCU-only test: validates injection failure when CUDA is pre-initialized"
-        )
-
     torch.cuda.init()  # any torch call that initializes CUDA would do
 
-    # Importing nsight (or, with --tool-init=none, the first decorated call) loads NCU,
-    # and the test needs that to happen after CUDA init.
+    # Importing nsight (or, with NSPY_NCU_INIT_AT_IMPORT=0, the first decorated call)
+    # loads NCU, and the test needs that to happen after CUDA init.
     with pytest.raises(Exception) as exc_info:
         import nsight
 
