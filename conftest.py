@@ -12,7 +12,7 @@ _INIT_MODES = {
     "ncu-at-import": ("1", None),
     # Nothing is active up front, so nsight.analyze.kernel activates NCU on the
     # first call to a decorated function.
-    "ncu-lazy": ("0", None),
+    "none": ("0", None),
     # CUPTI is activated here instead; nsight must not claim NCU at import.
     "cupti": ("0", "cupti"),
 }
@@ -26,7 +26,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help=(
             "How the nsight tool is initialized for the suite. 'ncu-at-import' "
             "(the default) lets nsight activate NCU while it is imported. "
-            "'ncu-lazy' leaves no tool active so the lazy NCU load in "
+            "'none' leaves no tool active so the lazy NCU load in "
             "nsight.analyze.kernel is exercised on the first decorated call. "
             "'cupti' activates CUPTI before the suite runs. Only one tool can be "
             "active per process, so this mode fully determines both "
@@ -36,6 +36,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    # pytest-isolated re-runs selected tests in a fresh child pytest process
+    # with the same arguments. That child must start with nsight unimported and
+    # no tool active, since the isolated tests control import order themselves
+    # (e.g. initializing CUDA before importing nsight). The parent's
+    # NSPY_NCU_INIT_AT_IMPORT is inherited by the child through the environment.
+    if os.environ.get("PYTEST_RUNNING_IN_SUBPROCESS") == "1":
+        return
+
     init_at_import, tool_name = _INIT_MODES[config.getoption("--tool-init")]
 
     # Set before nsight is imported: it reads this while importing, which is why

@@ -5,65 +5,47 @@
 This is used to test the scenario when a user initializes CUDA before importing nsight.
 NCU attach-mode requires CUDA to not be initialized before the injection library is loaded
 so profiling fails with an error like "Cuda is initialized before the tool".
-"""
 
-import subprocess
-import sys
-from pathlib import Path
+The test runs in a fresh subprocess via pytest-isolated, because nsight must not have
+been imported yet. The root conftest.py skips its tool setup in that subprocess.
+"""
 
 import pytest
 import torch
 
 
-def main() -> None:
-
-    torch.cuda.init()  # any torch call that initializes CUDA would do
-    import nsight  # this loads NCU, and the test needs it loaded after CUDA init
-
-    @nsight.analyze.kernel()
-    def run_simple_kernel(n: int) -> None:
-        a = torch.randn(n, n, device="cuda")
-        b = torch.randn(n, n, device="cuda")
-        with nsight.annotate("test"):
-            _ = a @ b
-
-    # under NSPY_NCU_INIT_AT_IMPORT=0 the load is deferred to here instead, still after CUDA init
-    run_simple_kernel(64)
-
-
-def test() -> None:
-    """Run this program as a subprocess; profiling must fail with the expected error."""
-    # Imported here, not at module scope: importing nsight before torch.cuda.init()
-    # in main() would defeat what this test exercises.
-    import nsight
-
-    if nsight.get_active_tool() == nsight.Tool.CUPTI:
+@pytest.mark.isolated
+def test_cuda_init_before_nsight(request: pytest.FixtureRequest) -> None:
+    """Profiling must fail with the expected error when CUDA is initialized first."""
+    if request.config.getoption("--tool-init") == "cupti":
         pytest.skip(
             "NCU-only test: validates injection failure when CUDA is pre-initialized"
         )
 
-    this_file = Path(__file__).resolve()
-    result = subprocess.run(
-        [sys.executable, str(this_file)],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        cwd=this_file.parent.parent,
-    )
+    torch.cuda.init()  # any torch call that initializes CUDA would do
 
-    # Process should fail with a ProfilerException raised by begin_profiling()
-    assert result.returncode != 0, "Subprocess unexpectedly succeeded"
+    # Importing nsight (or, with --tool-init=none, the first decorated call) loads NCU,
+    # and the test needs that to happen after CUDA init.
+    with pytest.raises(Exception) as exc_info:
+        import nsight
 
-    stderr_lower = (result.stderr or "").lower()
-    # Expect the standardized injection error message with the code emitted by ncu injection
-    # When CUDA is already initialized before injection, we expect code 3 (NV_INJ_ERROR_NOT_INITIALIZED)
-    assert (
-        "failed to begin profiling" in stderr_lower
-    ), f"Unexpected stderr: {result.stderr}"
-    assert (
-        "(code=3)" in stderr_lower
-    ), f"Expected injection error code 3 in stderr, got: {result.stderr}"
+        @nsight.analyze.kernel()
+        def run_simple_kernel(n: int) -> None:
+            a = torch.randn(n, n, device="cuda")
+            b = torch.randn(n, n, device="cuda")
+            with nsight.annotate("test"):
+                _ = a @ b
 
+        run_simple_kernel(64)
 
-if __name__ == "__main__":
-    main()
+    from nsight.exceptions import ProfilerException
+
+    assert isinstance(
+        exc_info.value, ProfilerException
+    ), f"Unexpected exception: {exc_info.value!r}"
+    message = str(exc_info.value).lower()
+    # Expect the standardized injection error message with the code emitted by ncu injection.
+    # When CUDA is already initialized before injection, we expect code 3
+    # (NV_INJ_ERROR_NOT_INITIALIZED)
+    assert "failed to begin profiling" in message, f"Unexpected error: {message}"
+    assert "(code=3)" in message, f"Expected injection error code 3, got: {message}"

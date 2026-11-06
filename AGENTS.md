@@ -291,7 +291,7 @@ are skipped without them.
 
 ```bash
 pip install -e ".[cu13]"           # or [cu12]; add ,cupti for the CUPTI backend
-pip install pytest torch           # pick the torch build matching your CUDA, see pytorch.org
+pip install pytest pytest-isolated torch           # pick the torch build matching your CUDA, see pytorch.org
 hatch run lint:check               # black --check, isort --check, mypy --strict (whole repo, incl. examples/tests)
 hatch run lint:format              # apply black + isort
 hatch run docs:build               # sphinx-build -W (warnings are errors)
