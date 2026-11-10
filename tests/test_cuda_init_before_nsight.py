@@ -18,26 +18,21 @@ def test_cuda_init_before_nsight() -> None:
 
     # Importing nsight (or, with NSPY_NCU_INIT_AT_IMPORT=0, the first decorated call)
     # loads NCU, and the test needs that to happen after CUDA init.
-    with pytest.raises(Exception) as exc_info:
-        import nsight
-
-        @nsight.analyze.kernel()
-        def run_simple_kernel(n: int) -> None:
-            a = torch.randn(n, n, device="cuda")
-            b = torch.randn(n, n, device="cuda")
-            with nsight.annotate("test"):
-                _ = a @ b
-
-        run_simple_kernel(64)
-
+    import nsight
     from nsight.exceptions import ProfilerException
 
-    assert isinstance(
-        exc_info.value, ProfilerException
-    ), f"Unexpected exception: {exc_info.value!r}"
-    message = str(exc_info.value).lower()
-    # Expect the standardized injection error message with the code emitted by ncu injection.
-    # When CUDA is already initialized before injection, we expect code 3
-    # (NV_INJ_ERROR_NOT_INITIALIZED)
-    assert "failed to begin profiling" in message, f"Unexpected error: {message}"
-    assert "(code=3)" in message, f"Expected injection error code 3, got: {message}"
+    @nsight.analyze.kernel()
+    def run_simple_kernel(n: int) -> None:
+        a = torch.randn(n, n, device="cuda")
+        b = torch.randn(n, n, device="cuda")
+        with nsight.annotate("test"):
+            _ = a @ b
+
+    # Expect the standardized injection error message with the code emitted by ncu
+    # injection. When CUDA is already initialized before injection, we expect code 3
+    # (NV_INJ_ERROR_NOT_INITIALIZED).
+    with pytest.raises(
+        ProfilerException,
+        match=r"(?is)^(?=.*failed to begin profiling)(?=.*\(code=3\))",
+    ):
+        run_simple_kernel(64)
