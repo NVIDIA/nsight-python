@@ -7,18 +7,19 @@ NCU attach-mode requires CUDA to not be initialized before the injection library
 so profiling fails with an error like "Cuda is initialized before the tool".
 """
 
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
 import torch
 
 
-def main() -> None:
-
+@pytest.mark.isolated  # type: ignore[untyped-decorator]
+def test_cuda_init_before_nsight() -> None:
+    """Profiling must fail with the expected error when CUDA is initialized first."""
     torch.cuda.init()  # any torch call that initializes CUDA would do
-    import nsight  # this loads NCU, and the test needs it loaded after CUDA init
+
+    # Importing nsight (or, with NSPY_NCU_INIT_AT_IMPORT=0, the first decorated call)
+    # loads NCU, and the test needs that to happen after CUDA init.
+    import nsight
+    from nsight.exceptions import ProfilerException
 
     @nsight.analyze.kernel()
     def run_simple_kernel(n: int) -> None:
@@ -27,43 +28,11 @@ def main() -> None:
         with nsight.annotate("test"):
             _ = a @ b
 
-    # under NSPY_NCU_INIT_AT_IMPORT=0 the load is deferred to here instead, still after CUDA init
-    run_simple_kernel(64)
-
-
-def test() -> None:
-    """Run this program as a subprocess; profiling must fail with the expected error."""
-    # Imported here, not at module scope: importing nsight before torch.cuda.init()
-    # in main() would defeat what this test exercises.
-    import nsight
-
-    if nsight.get_active_tool() == nsight.Tool.CUPTI:
-        pytest.skip(
-            "NCU-only test: validates injection failure when CUDA is pre-initialized"
-        )
-
-    this_file = Path(__file__).resolve()
-    result = subprocess.run(
-        [sys.executable, str(this_file)],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        cwd=this_file.parent.parent,
-    )
-
-    # Process should fail with a ProfilerException raised by begin_profiling()
-    assert result.returncode != 0, "Subprocess unexpectedly succeeded"
-
-    stderr_lower = (result.stderr or "").lower()
-    # Expect the standardized injection error message with the code emitted by ncu injection
-    # When CUDA is already initialized before injection, we expect code 3 (NV_INJ_ERROR_NOT_INITIALIZED)
-    assert (
-        "failed to begin profiling" in stderr_lower
-    ), f"Unexpected stderr: {result.stderr}"
-    assert (
-        "(code=3)" in stderr_lower
-    ), f"Expected injection error code 3 in stderr, got: {result.stderr}"
-
-
-if __name__ == "__main__":
-    main()
+    # Expect the standardized injection error message with the code emitted by ncu
+    # injection. When CUDA is already initialized before injection, we expect code 3
+    # (NV_INJ_ERROR_NOT_INITIALIZED).
+    with pytest.raises(
+        ProfilerException,
+        match=r"(?is)^(?=.*failed to begin profiling)(?=.*\(code=3\))",
+    ):
+        run_simple_kernel(64)
