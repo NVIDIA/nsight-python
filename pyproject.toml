@@ -62,6 +62,7 @@ allow-direct-references = true
 source = "vcs"
 
 [tool.pytest.ini_options]
+required_plugins = "pytest-isolated>=0.6"
 filterwarnings = [
     "ignore:builtin type SwigPy.* has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning"
