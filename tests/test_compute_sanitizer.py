@@ -4,6 +4,7 @@
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,10 @@ import pytest
 import nsight
 from nsight import exceptions, tools_manager
 from nsight.collection import _compute_sanitizer_attach, compute_sanitizer
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="Compute Sanitizer is Linux-only"
+)
 
 
 def test_build_attach_command() -> None:
