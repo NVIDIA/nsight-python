@@ -180,8 +180,9 @@ the connection, NVTX filters, and text log output itself.
 The text log is updated while the process runs. ``log_path`` is optional;
 without it, Nsight Python selects a unique ``.log`` filename in the system
 temporary directory. An explicit path must not already exist, and its parent
-directory must exist. Use ``nsight.sanitize.log_path()`` to inspect the selected
-destination.
+directory must exist. Use ``nsight.sanitize.log_path()`` to get the selected
+destination. The Compute Sanitizer frontend may not have created the file yet,
+so check ``Path.exists()`` before reading it.
 
 Limitations
 """""""""""
