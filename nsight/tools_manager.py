@@ -24,7 +24,8 @@ def activate(
     """Select and load ``tool`` as the active tool for this process.
 
     Only one tool can be active at a time. The first call loads the tool; calling
-    again with the *same* tool is a no-op. Calling with a *different* tool while
+    again with the *same* tool is a no-op: the attempt is ignored and a
+    :class:`RuntimeWarning` is emitted. Calling with a *different* tool while
     one is already active raises, because the tools are mutually exclusive.
 
     Each tool has its own prerequisites and its own constraints on when it may
@@ -55,6 +56,12 @@ def activate(
         raise ValueError("options are only supported for Compute Sanitizer")
     if _active_tool is not None:
         if _active_tool == tool:
+            warnings.warn(
+                f"{tool.name} is already active; calling activate again with the "
+                "same tool is a no-op and the attempt is ignored.",
+                category=RuntimeWarning,
+                stacklevel=2,
+            )
             return
         raise RuntimeError(
             f"{_active_tool!r} is already active; cannot switch to {tool!r}"

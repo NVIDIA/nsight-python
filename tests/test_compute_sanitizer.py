@@ -309,12 +309,16 @@ def test_sanitizer_activation_and_annotations(
         tool_args=("--racecheck-report", "all"),
     )
     nsight.activate(nsight.Tool.COMPUTE_SANITIZER, options=options)
-    nsight.activate(
-        nsight.Tool.COMPUTE_SANITIZER,
-        options=nsight.ComputeSanitizerOptions(
-            tool=nsight.ComputeSanitizerTool.MEMCHECK
-        ),
-    )
+    # Re-activating is a no-op that warns, whether or not options are passed.
+    with pytest.warns(RuntimeWarning, match="already active"):
+        nsight.activate(nsight.Tool.COMPUTE_SANITIZER)
+    with pytest.warns(RuntimeWarning, match="already active"):
+        nsight.activate(
+            nsight.Tool.COMPUTE_SANITIZER,
+            options=nsight.ComputeSanitizerOptions(
+                tool=nsight.ComputeSanitizerTool.MEMCHECK
+            ),
+        )
     for value in (7, 8):
         with nsight.annotate("target"):
             calls.append(value)
