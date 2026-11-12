@@ -51,7 +51,9 @@ jobs:
       - name: "Running Tests"
         run: |
           pip install hatch
-          hatch run test_cu13:run
+          # The CTK 13.5.0 based PyTorch image is not out yet, hence disabling tests which
+          # require the compute-sanitizer tool to be active.
+          hatch run test_cu13:run -- -m "not requires_compute_sanitizer"
 
   test-cupti:
     name: test-cupti (${{ matrix.platform.runner }})
@@ -70,7 +72,9 @@ jobs:
       - name: "Running Tests (CUPTI backend)"
         run: |
           pip install hatch
-          hatch run test_cu13:run -- --tool-init=cupti
+          # The CTK 13.5.0 based PyTorch image is not out yet, hence disabling tests which
+          # require the compute-sanitizer tool to be active.
+          hatch run test_cu13:run -- --tool-init=cupti -m "not requires_compute_sanitizer"
 
   test-ncu-windows:
     name: test-ncu (windows-amd64-gpu-a100-latest-1)

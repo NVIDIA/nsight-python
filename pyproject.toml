@@ -63,6 +63,9 @@ source = "vcs"
 
 [tool.pytest.ini_options]
 required_plugins = "pytest-isolated>=0.6"
+markers = [
+    "requires_compute_sanitizer: needs Compute Sanitizer 2026.4.0.0 (CTK 13.5.0) or greater",
+]
 filterwarnings = [
     "ignore:builtin type SwigPy.* has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning"

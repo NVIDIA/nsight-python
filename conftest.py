@@ -40,8 +40,11 @@ def pytest_configure(config: pytest.Config) -> None:
     # with the same arguments. That child must start with nsight unimported and
     # no tool active, since the isolated tests control import order themselves
     # (e.g. initializing CUDA before importing nsight). The parent's
-    # NSPY_NCU_INIT_AT_IMPORT is inherited by the child through the environment.
+    # NSPY_NCU_INIT_AT_IMPORT is inherited by the child through the environment,
+    # so it is reset here: a test module that imports nsight at module scope must
+    # not activate NCU before an isolated test can activate its own tool.
     if os.environ.get("PYTEST_RUNNING_IN_SUBPROCESS") == "1":
+        os.environ["NSPY_NCU_INIT_AT_IMPORT"] = "0"
         return
 
     init_at_import, tool_name = _INIT_MODES[config.getoption("--tool-init")]

@@ -14,7 +14,7 @@ import torch
 from cuda.core import Device, LaunchConfig, Program, launch
 
 import nsight
-from nsight import exceptions
+from nsight import exceptions, tools_manager
 
 _cupti_active = nsight.get_active_tool() == nsight.Tool.CUPTI
 _skip_cupti = pytest.mark.skipif(_cupti_active, reason="not supported by cupti")
@@ -1644,3 +1644,20 @@ def test_tuple_typed_function_args_multiple_metrics() -> None:
             10,
             20,
         ), f"Row {idx}: pair should be (10, 20), got {df['pair'].iloc[idx]}"
+
+
+def test_analyze_kernel_rejects_compute_sanitizer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tools_manager, "_active_tool", nsight.Tool.COMPUTE_SANITIZER)
+
+    @nsight.analyze.kernel(runs=1)
+    def profiled() -> None:
+        with nsight.annotate("target"):
+            pass
+
+    with pytest.raises(
+        exceptions.ProfilerException,
+        match="not supported under COMPUTE_SANITIZER",
+    ):
+        profiled()
