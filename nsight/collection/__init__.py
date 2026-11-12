@@ -3,9 +3,10 @@
 
 import functools
 
+import nsight.collection.compute_sanitizer as compute_sanitizer
 import nsight.collection.core as core
 import nsight.collection.cupti as cupti
 import nsight.collection.ncu as ncu
 import nsight.utils as utils
 
-__all__ = ["ncu", "cupti", "core"]
+__all__ = ["compute_sanitizer", "cupti", "ncu", "core"]

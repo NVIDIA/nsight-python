@@ -127,3 +127,67 @@ profiling session, before the activity buffers are flushed, because a kernel's
 activity record is only written when the kernel completes. Work that the
 profiled function left running asynchronously is therefore waited for before
 profiling returns.
+
+.. _tools-compute-sanitizer:
+
+NVIDIA Compute Sanitizer (experimental)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+:attr:`nsight.Tool.COMPUTE_SANITIZER` checks CUDA work in annotated regions.
+
+Activation
+""""""""""
+
+Set ``NSPY_NCU_INIT_AT_IMPORT=0`` before importing ``nsight`` to prevent
+default NCU activation. Activate Compute Sanitizer before importing a CUDA
+framework or otherwise initializing CUDA. Activation self-injects the
+collection backend into the current process and starts one attach frontend;
+the Python script is not relaunched.
+
+The executable on ``PATH`` may be the CUDA Toolkit's
+``bin/compute-sanitizer`` launcher. Nsight Python discovers its matching
+``libsanitizer-collection.so`` and ``libsanitizer-public.so`` in the sibling
+``compute-sanitizer`` directory, including through a toolkit symlink such as
+``/usr/local/cuda``.
+
+The following complete example uses ``memcheck`` to detect an out-of-bounds
+CUDA memset. Run it with ``python examples/14_compute_sanitizer.py`` from the
+repository root.
+
+.. literalinclude:: ../../examples/14_compute_sanitizer.py
+   :language: python
+
+For a workload with shared-memory races, replace the example's activation
+options with:
+
+.. code-block:: python
+
+   nsight.ComputeSanitizerOptions(
+       tool=nsight.ComputeSanitizerTool.RACECHECK,
+       tool_args=("--racecheck-report", "all"),
+   )
+
+The example's invalid memset is a ``memcheck`` case, not a racecheck case.
+
+``memcheck`` is the default tool. ``tool_args`` passes individual CLI argument
+tokens to the analyzer; it is not a shell command string. Nsight Python manages
+the connection, NVTX filters, and text log output itself.
+
+.. autoclass:: nsight.ComputeSanitizerTool
+
+.. autoclass:: nsight.ComputeSanitizerOptions
+
+The text log is updated while the process runs. ``log_path`` is optional;
+without it, Nsight Python selects a unique ``.log`` filename in the system
+temporary directory. An explicit path must not already exist, and its parent
+directory must exist. Use ``nsight.sanitize.log_path()`` to inspect the selected
+destination.
+
+Limitations
+"""""""""""
+
+**Platform.** Self-attach currently requires Linux with ``/proc``.
+
+**Deactivation.** :func:`~nsight.deactivate` is not supported. The injected
+backend cannot be unloaded, so Compute Sanitizer stays loaded for the lifetime
+of the process and remains the active tool once activated.

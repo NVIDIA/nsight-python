@@ -9,6 +9,8 @@ This directory contains examples demonstrating how to use Nsight Python for prof
 - **Python 3.10+**
 - **CUDA-capable GPU**
 - **NVIDIA Nsight Compute** (for profiling)
+- **NVIDIA Compute Sanitizer with `--nvtx-include` support** (only for
+  `14_compute_sanitizer.py`)
 
 ### Python Dependencies
 
@@ -122,3 +124,55 @@ This will profile a simple matrix multiplication and generate a plot showing the
   - Collecting information once, per configuration, per run, or per annotation
   - Understanding collection scopes and aggregation behavior
   - Tracking execution order and system state during profiling
+
+- **`14_compute_sanitizer.py`** - Checking annotated regions with Compute Sanitizer
+  - Selecting memcheck through `nsight.activate(..., options=...)`
+  - Self-injecting one backend and attaching one sanitizer frontend
+  - Demonstrating an intentional out-of-bounds CUDA memset
+
+  Run it directly with Python; do not prefix the command with
+  `compute-sanitizer` because Nsight Python starts the attach frontend:
+
+  ```bash
+  python 14_compute_sanitizer.py
+  ```
+
+  The example disables legacy import-time NCU activation before importing
+  `nsight`. Applications selecting Compute Sanitizer must do the same and must
+  call `activate` before importing a CUDA framework or otherwise initializing
+  CUDA.
+
+  The Python script executes only once. The sanitizer frontend remains attached
+  until the target exits, so frontend-only findings cannot change the target's
+  exit code; use an external supervisor when CI requires the frontend's
+  `--error-exitcode` result.
+
+  Mark the regions you want to check with `nsight.annotate(...)`. Sanitizer
+  activation instruments the current process, so no decorator is needed.
+  Call `nsight.sanitize.log_path()` to get the chosen text log path. The file is
+  updated while the process runs.
+
+  Compute Sanitizer writes its diagnostics to a text log. By default, Nsight
+  Python selects a unique temporary path such as:
+
+  ```text
+  /tmp/compute-sanitizer-output-12345-a1b2c3d4.log
+  ```
+
+  Pass an explicit log path at activation when automation needs one. The
+  path must not already exist. Choose a tool and pass any tool-specific CLI
+  arguments as separate tokens (not one shell command string):
+
+  ```python
+  nsight.activate(
+      nsight.Tool.COMPUTE_SANITIZER,
+      options=nsight.ComputeSanitizerOptions(
+          log_path="/tmp/sanitizer.log",
+          tool=nsight.ComputeSanitizerTool.RACECHECK,
+          tool_args=("--racecheck-report", "all"),
+      ),
+  )
+  ```
+
+  The frontend updates the log as findings arrive. Nsight Python leaves the
+  log untouched for the user or external tooling to inspect.
