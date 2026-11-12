@@ -10,7 +10,7 @@ from typing import Any
 import nvtx
 
 import nsight.utils as utils
-from nsight import info_collector
+from nsight import _session, info_collector
 from nsight.exceptions import CUDA_CORE_UNAVAILABLE_MSG
 
 # Thread-local storage for tracking annotations
@@ -84,6 +84,9 @@ def is_active_annotation(name: str) -> bool:
     Returns:
         True if the annotation name has been used, False otherwise.
     """
+    session_active = _session.is_active_annotation(name)
+    if session_active is not None:
+        return session_active
     if hasattr(_thread_local_storage, "used_annotation_names"):
         return name in _thread_local_storage.used_annotation_names
 
@@ -109,7 +112,8 @@ class annotate:
 
     Args:
         name: Name of the annotation to be used for profiling. Annotation names
-            must be unique within a single profiling run to ensure unambiguous results.
+            must be unique per thread within a single profiling run. Different
+            threads may reuse a name; their kernels form one sample.
         ignore_failures: Flag indicating whether to ignore
             failures in the annotate context. If set to ``True``, any exceptions
             raised within the context will be ignored, and the profiling will
@@ -121,9 +125,7 @@ class annotate:
     Raises:
         ValueError: If attempting to enter a nested annotation context, or if
             an annotation with the same name has already been used in this
-            profiling run. Nested annotations are not supported and annotation
-            names must be unique within a profiling run to avoid incorrect
-            profiling results.
+            thread and profiling run. Nested annotations are not supported.
     Note:
         All annotations are created under the NVTX domain ``"nsight-python"``.
         This domain is used internally to filter and identify Nsight Python
@@ -149,6 +151,11 @@ class annotate:
             raise ImportError(CUDA_CORE_UNAVAILABLE_MSG)
 
     def __enter__(self) -> "annotate":
+        """Enter a range inside the current profiled function/config/run.
+
+        During collection, entering a range from a config/run info collector
+        or after the profiled function returns raises immediately.
+        """
 
         # Check for nested annotations
         if _is_in_annotation():
@@ -164,11 +171,12 @@ class annotate:
                 f"Each annotation must have a unique name."
             )
 
+        marker_name = _session.marker_name(self.name)
         add_active_annotation(self.name)
         _set_in_annotation(True)
         # Collect annotation-scope information
         info_collector.collect_for_annotation(self.name)
-        self._range_id = nvtx.start_range(message=self.name, domain=utils.NVTX_DOMAIN)
+        self._range_id = nvtx.start_range(message=marker_name, domain=utils.NVTX_DOMAIN)
         return self
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:

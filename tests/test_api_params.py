@@ -57,11 +57,11 @@ TEST_SCENARIOS: Dict[str, Dict[str, Any]] = {
     # RuntimeError scenarios
     # ==========================================================================
     "inconsistent_kernel_counts": {
-        "description": "RuntimeError: Expect same number of kernels per run",
+        "description": "Variable kernel counts still require a reducer",
         "decorator_configs": [(1024,), (2048,)],
         "benchmark_type": "variable_kernels",
         "runs": 1,
-        "expected": "Expect same number of kernels per run",
+        "expected": "Supply combine_kernel_metrics",
     },
     "multiple_kernels_no_combine": {
         "description": "RuntimeError: More than one kernel is launched within annotation",
