@@ -93,6 +93,7 @@ def test_13_custom_info_collectors() -> None:
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="Compute Sanitizer is Linux-only"
 )  # type: ignore[untyped-decorator]
+@pytest.mark.requires_compute_sanitizer  # type: ignore[untyped-decorator]
 @pytest.mark.isolated  # type: ignore[untyped-decorator]
 def test_14_compute_sanitizer() -> None:
     compute_sanitizer = importlib.import_module("examples.14_compute_sanitizer")
