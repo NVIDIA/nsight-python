@@ -145,6 +145,28 @@ def test_config_at_call_time_with_kwargs() -> None:
 # ----------------------------------------------------------------------------
 
 
+@nsight.analyze.kernel()
+def config_at_call_time_default(x: int = 42) -> None:
+    _simple_kernel_impl(x, x)
+
+
+def test_config_at_call_time_with_only_kwargs() -> None:
+    """Test that keyword arguments without positional arguments also raise."""
+    # Without this error the call is profiled with the default x=42 instead.
+    with pytest.raises(
+        exceptions.ProfilerException, match="Keyword arguments are not supported yet"
+    ):
+        config_at_call_time_default(x=23)
+
+    with pytest.raises(
+        exceptions.ProfilerException, match="Keyword arguments are not supported yet"
+    ):
+        config_at_call_time_configs(x=42, y=23)
+
+
+# ----------------------------------------------------------------------------
+
+
 def test_config_at_call_time_repeated() -> None:
     """Test providing configuration(s) to multiple calls"""
     result_a = config_at_call_time_configs(42, 23)
