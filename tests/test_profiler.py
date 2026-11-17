@@ -4,6 +4,7 @@ Test suite for Nsight Python profiler functionality.
 
 import os
 import shutil
+import warnings
 from collections.abc import Generator, Sequence
 from typing import Any, Literal
 
@@ -992,63 +993,37 @@ def _compute_custom_metrics_dict_with_units(
     }
 
 
-@pytest.mark.parametrize(
-    "derive_metric_func,expected_name,expected_units",
-    [
-        (_compute_custom_metric, "_compute_custom_metric", [None]),
-        (_compute_custom_metric_dict, ["CustomMetric1", "CustomMetric2"], [None, None]),
-        (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>", [None]),
-        (
-            lambda time_ns, x, y: {"Custom Metric": (x * y) / (time_ns / 1e9) / 1e9},
-            "Custom Metric",
-            [None],
-        ),
-        (
-            _compute_custom_metric_with_unit,
-            "_compute_custom_metric_with_unit",
-            ["ops/s"],
-        ),
-        (
-            _compute_custom_metrics_dict_with_units,
-            ["CustomMetric1", "CustomMetric2"],
-            ["ops/s", "Mops/s"],
-        ),
-    ],
-)  # type: ignore[untyped-decorator]
-def test_parameter_derive_metric(
-    derive_metric_func: Any,
+_DERIVE_METRIC_CASES = [
+    (_compute_custom_metric, "_compute_custom_metric", [None]),
+    (_compute_custom_metric_dict, ["CustomMetric1", "CustomMetric2"], [None, None]),
+    (lambda time_ns, x, y: (x * y) / (time_ns / 1e9) / 1e9, "<lambda>", [None]),
+    (
+        lambda time_ns, x, y: {"Custom Metric": (x * y) / (time_ns / 1e9) / 1e9},
+        "Custom Metric",
+        [None],
+    ),
+    (
+        _compute_custom_metric_with_unit,
+        "_compute_custom_metric_with_unit",
+        ["ops/s"],
+    ),
+    (
+        _compute_custom_metrics_dict_with_units,
+        ["CustomMetric1", "CustomMetric2"],
+        ["ops/s", "Mops/s"],
+    ),
+]
+
+
+def _assert_derive_metric_layout(
+    df: pd.DataFrame,
+    configs: Sequence[tuple[int, int]],
     expected_name: str | list[str],
     expected_units: list[str | None],
 ) -> None:
-    """Test the derive_metric parameter to transform collected metrics."""
-
-    configs = [(100, 100), (200, 200)]
+    """Check the metric names, row count and units of a derive_metric result."""
     # Number of raw collected metric rows, excluding any derived metrics
     raw_metric_rows = len(configs)  # as metrics = 1, annotations = 1
-
-    @nsight.analyze.kernel(
-        configs=configs,
-        runs=2,
-        verbosity=nsight.VerbosityLevel.SILENT,
-        derive_metric=derive_metric_func,
-    )
-    def profiled_func(x: int, y: int) -> None:
-        _simple_kernel_impl(x, y, "test_derive_metric")
-
-    # Run profiling
-    # Check for warnings when units are None
-    has_none_units = any(unit is None for unit in expected_units)
-    if has_none_units:
-        with pytest.warns(
-            UserWarning, match="Derived metric.*does not have a unit specified"
-        ):
-            profile_output = profiled_func()
-    else:
-        profile_output = profiled_func()
-    assert profile_output is not None, "ProfileResults should be returned"
-
-    # Verify the transformed metric is present
-    df = profile_output.to_dataframe()
 
     assert all(
         df["Metric"][0:raw_metric_rows] == "gpu__time_duration.sum"
@@ -1062,17 +1037,19 @@ def test_parameter_derive_metric(
         assert expected_metrics.issubset(
             derived_metrics
         ), f"Expected metrics {expected_metrics} not all found in {derived_metrics}"
-        # Verify we have results for all combinations (2 configs * (1 base + N derived) metrics)
+        # Verify we have results for all combinations (configs * (1 base + N derived) metrics)
         expected_rows = len(configs) * (1 + len(expected_name))
         assert (
             len(df) == expected_rows
-        ), f"Should have results for {expected_rows} rows (2 configs * {1 + len(expected_name)} metrics)"
+        ), f"Should have results for {expected_rows} rows ({len(configs)} configs * {1 + len(expected_name)} metrics)"
     else:
         assert all(
             df["Metric"][raw_metric_rows : len(df)] == expected_name
         ), f"Metric column (row-{raw_metric_rows} ~ row-{len(df)-1}) should show '{expected_name}'"
-        # Verify we have results for all combinations (2 configs * 2 metrics = 4 rows)
-        assert len(df) == 2 * 2, "Should have results for 2 configurations * 2 metrics"
+        # Verify we have results for all combinations (configs * 2 metrics)
+        assert (
+            len(df) == len(configs) * 2
+        ), f"Should have results for {len(configs)} configurations * 2 metrics"
 
     # Verify the metric values are transformed (should be positive numbers)
     assert "AvgValue" in df.columns, "AvgValue column should exist"
@@ -1101,6 +1078,115 @@ def test_parameter_derive_metric(
             assert (
                 len(actual_units) == 1 and actual_units[0] == expected_unit
             ), f"Invalid unit for metric '{metric_name}'. Expected '{expected_unit}', got {actual_units.tolist()}"
+
+
+@pytest.mark.parametrize(
+    "derive_metric_func,expected_name,expected_units", _DERIVE_METRIC_CASES
+)  # type: ignore[untyped-decorator]
+def test_parameter_derive_metric(
+    derive_metric_func: Any,
+    expected_name: str | list[str],
+    expected_units: list[str | None],
+) -> None:
+    """Test the derive_metric parameter to transform collected metrics."""
+
+    configs = [(100, 100), (200, 200)]
+
+    @nsight.analyze.kernel(
+        configs=configs,
+        runs=2,
+        verbosity=nsight.VerbosityLevel.SILENT,
+        derive_metric=derive_metric_func,
+    )
+    def profiled_func(x: int, y: int) -> None:
+        _simple_kernel_impl(x, y, "test_derive_metric")
+
+    # Run profiling
+    # Check for warnings when units are None
+    has_none_units = any(unit is None for unit in expected_units)
+    if has_none_units:
+        with pytest.warns(
+            UserWarning, match="Derived metric.*does not have a unit specified"
+        ):
+            profile_output = profiled_func()
+    else:
+        profile_output = profiled_func()
+    assert profile_output is not None, "ProfileResults should be returned"
+
+    # Verify the transformed metric is present
+    df = profile_output.to_dataframe()
+    _assert_derive_metric_layout(df, configs, expected_name, expected_units)
+
+
+@pytest.mark.parametrize("failing_runs", ["some", "all"])  # type: ignore[untyped-decorator]
+@pytest.mark.parametrize(
+    "derive_metric_func,expected_name,expected_units", _DERIVE_METRIC_CASES
+)  # type: ignore[untyped-decorator]
+def test_parameter_derive_metric_with_ignore_failures(
+    derive_metric_func: Any,
+    expected_name: str | list[str],
+    expected_units: list[str | None],
+    failing_runs: Literal["some", "all"],
+) -> None:
+    """Test the derive_metric layout when runs fail under ignore_failures=True."""
+
+    configs = [(100, 100), (200, 200)]
+    runs = 2
+    runs_seen: dict[tuple[int, int], int] = {}
+
+    @nsight.analyze.kernel(
+        configs=configs,
+        runs=runs,
+        verbosity=nsight.VerbosityLevel.SILENT,
+        derive_metric=derive_metric_func,
+    )
+    def profiled_func(x: int, y: int) -> None:
+        run = runs_seen.get((x, y), 0)
+        runs_seen[(x, y)] = run + 1
+        # "some": the first run of every config fails, so the first row and a
+        # config that also has a successful run are covered
+        fail = failing_runs == "all" or run == 0
+        a = torch.randn(x, y, device="cuda")
+        b = torch.randn(x, y, device="cuda")
+        with nsight.annotate(
+            "test_derive_metric_with_ignore_failures", ignore_failures=True
+        ):
+            # A failed run must not launch a kernel, only the dummy kernel
+            if fail:
+                raise RuntimeError("injected failure")
+            _ = a + b
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        profile_output = profiled_func()
+    assert profile_output is not None, "ProfileResults should be returned"
+
+    assert any(
+        issubclass(w.category, RuntimeWarning) and "Ignored failure" in str(w.message)
+        for w in caught
+    ), "Each failed run should emit an 'Ignored failure' warning"
+    missing_unit_warned = any(
+        issubclass(w.category, UserWarning)
+        and "does not have a unit specified" in str(w.message)
+        for w in caught
+    )
+
+    df = profile_output.to_dataframe()
+
+    if failing_runs == "some":
+        # The failed runs are NaN under the names and units of the
+        # successful runs, so the layout matches test_parameter_derive_metric
+        _assert_derive_metric_layout(df, configs, expected_name, expected_units)
+        assert missing_unit_warned == any(unit is None for unit in expected_units)
+        assert df["AvgValue"].notna().all()
+        assert (df["NumRuns"] == runs - 1).all()
+    else:
+        # derive_metric is never called, so its derived metric is labelled
+        # with the function name and has no unit
+        _assert_derive_metric_layout(df, configs, derive_metric_func.__name__, [None])
+        assert not missing_unit_warned
+        assert df["AvgValue"].isna().all()
+        assert (df["NumRuns"] == 0).all()
 
 
 # ============================================================================
