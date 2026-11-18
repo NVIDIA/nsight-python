@@ -206,14 +206,17 @@ def aggregate_data(
         # Set the Normalized column to indicate normalization was applied
         agg_df["Normalized"] = normalize_against
 
-    # Calculate the geometric mean of the AvgValue column
-    agg_df["Geomean"] = agg_df.groupby(groupby_columns)["AvgValue"].transform(
-        lambda x: (
-            np.exp(np.mean(np.log(pd.to_numeric(x.dropna(), errors="coerce"))))
-            if not x.dropna().empty
-            else np.nan
+    # Calculate the geometric mean of the AvgValue column. A zero value gives a
+    # geomean of 0 and a negative one gives NaN; both are the intended results,
+    # so numpy's floating-point warnings for log(0) and log(<0) are suppressed.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        agg_df["Geomean"] = agg_df.groupby(groupby_columns)["AvgValue"].transform(
+            lambda x: (
+                np.exp(np.mean(np.log(pd.to_numeric(x.dropna(), errors="coerce"))))
+                if not x.dropna().empty
+                else np.nan
+            )
         )
-    )
 
     # Drop the temporary stringified group keys; the original columns remain.
     if sortkey_cols:

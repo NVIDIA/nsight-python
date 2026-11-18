@@ -296,9 +296,9 @@ def test_no_args_function_with_derive_metric() -> None:
 
     # Define a derive_metric function that only takes the metric values
     # (no config parameters since the function has no args)
-    def custom_metric(time_ns: float) -> float:
+    def custom_metric(time_ns: float) -> tuple[float, str]:
         """Convert time to arbitrary custom metric."""
-        return time_ns / 1e6  # Convert to milliseconds
+        return time_ns / 1e6, "ms"  # Convert to milliseconds
 
     @nsight.analyze.kernel(
         runs=2, verbosity=nsight.VerbosityLevel.SILENT, derive_metric=custom_metric
