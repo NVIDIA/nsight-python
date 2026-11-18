@@ -80,7 +80,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: "Install NCU 2026.4.0"
+      - name: "Install NCU 2026.4.0 (CUDA 13.5)"
         shell: pwsh
         run: |
           curl.exe -fL -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_4_0/nsight_compute-windows-x86_64-2026.4.0.10.msi"
