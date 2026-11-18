@@ -308,7 +308,9 @@ def test_no_args_function_with_derive_metric() -> None:
         with nsight.annotate("test"):
             _ = a + b
 
-    result = no_args_with_transform()
+    # custom_metric returns a bare value, so nsight warns that it has no unit.
+    with pytest.warns(UserWarning, match="does not have a unit specified"):
+        result = no_args_with_transform()
 
     assert result is not None, "ProfileResults should be returned"
     df = result.to_dataframe()

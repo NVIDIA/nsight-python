@@ -5,6 +5,12 @@ import os
 
 import pytest
 
+# Triton 3.9 warns when this is unset because its default changes in 3.10. Pin
+# the current behavior (FP fusion enabled) so the Triton examples run without
+# the warning. Set here, before any test module imports Triton, and inherited
+# by pytest-isolated child processes.
+os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
+
 # How each --tool-init mode sets nsight up, as
 # (NSPY_NCU_INIT_AT_IMPORT, tool to activate in pytest_configure).
 _INIT_MODES = {
