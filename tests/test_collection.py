@@ -5,13 +5,21 @@ import importlib.metadata
 import io
 import os
 import re
+import warnings
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from nsight import VerbosityLevel, collection, exceptions, extraction, utils
+from nsight import (
+    VerbosityLevel,
+    collection,
+    exceptions,
+    extraction,
+    transformation,
+    utils,
+)
 from nsight.collection import cupti as cupti_collection
 
 
@@ -257,6 +265,74 @@ def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
     message = str(exc_info.value)
     assert "More than one (6 in 2 runs, 3 per run on average) kernel" in message
     assert "autotunes" in message
+
+
+def _failed_action_data() -> utils.ActionData:
+    # What both tools record for a run that failed under ignore_failures=True
+    return utils.ActionData(
+        name=utils.DUMMY_KERNEL_NAME,
+        values=None,
+        compute_clock=1,
+        memory_clock=1,
+        gpu="gpu",
+        units=["ns"],
+    )
+
+
+def test_extract_df_from_data_failed_run_keeps_derived_metric_unit() -> None:
+    def throughput(time: float, n: int) -> tuple[float, str]:
+        return n / time, "elem/ns"
+
+    # The first run succeeds and the second one fails
+    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        df = extraction.extract_df_from_data(
+            profiling_data,
+            ["gpu__time_duration.sum"],
+            [(1,)],
+            2,
+            _profiled_func,
+            throughput,
+            VerbosityLevel.SILENT,
+        )
+
+    derived = df[df["Metric"] == "throughput"]
+    assert derived["Value"].isna().tolist() == [False, True]
+    assert derived["Unit"].tolist() == ["elem/ns", "elem/ns"]
+    # throughput returns a unit, so nothing must warn that it is missing
+    assert [str(warning.message) for warning in caught] == []
+
+    # Both runs share a unit, so they aggregate into one row
+    aggregated = transformation.aggregate_data(
+        df, _profiled_func, None, VerbosityLevel.SILENT
+    )
+    row = aggregated[aggregated["Metric"] == "throughput"].iloc[0]
+    assert row["NumRuns"] == 1
+    assert row["Unit"] == "elem/ns"
+
+
+def test_extract_df_from_data_failed_run_keeps_derived_metric_names() -> None:
+    def derived(time: float, n: int) -> dict[str, tuple[float, str]]:
+        return {"throughput": (n / time, "elem/ns"), "cost": (time / n, "ns/elem")}
+
+    # The first config succeeds and the second one fails
+    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    df = extraction.extract_df_from_data(
+        profiling_data,
+        ["gpu__time_duration.sum"],
+        [(1,), (2,)],
+        1,
+        _profiled_func,
+        derived,
+        VerbosityLevel.SILENT,
+    )
+
+    assert set(df["Metric"]) == {"gpu__time_duration.sum", "throughput", "cost"}
+    failed = df[(df["n"] == 2) & (df["Metric"] != "gpu__time_duration.sum")]
+    assert failed["Metric"].tolist() == ["throughput", "cost"]
+    assert failed["Unit"].tolist() == ["elem/ns", "ns/elem"]
+    assert failed["Value"].isna().all()
 
 
 def test_extract_data_from_report_explains_missing_report(tmp_path: Any) -> None:

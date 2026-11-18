@@ -186,6 +186,8 @@ def kernel(
 
             **Note on units**: When units are not provided (returning scalar values instead of tuples), ``np.nan`` will be added to the ``Unit`` column in the dataframe and a warning will be issued. To avoid warnings and ensure proper unit tracking, return tuples ``(value, unit)`` for all derived metrics.
 
+            **Note on failed runs**: ``derive_metric`` is not called for a run that failed under ``ignore_failures=True``; its derived metrics are NaN, under the metric names and units of a successful run. If no run succeeded, they are labelled with the function name and have no unit.
+
             See the examples for concrete use cases.
         normalize_against:
             Annotation name to normalize metrics against (computes current / baseline).

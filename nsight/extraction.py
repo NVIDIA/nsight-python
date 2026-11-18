@@ -211,6 +211,8 @@ def extract_df_from_data(
     memory_clocks: List[int] = []
     all_metrics: List[Tuple[str, ...]] = []
     all_transformed_metrics: List[List[str] | str | bool] = []
+    # Rows of the all_transformed_* lists that belong to failed runs
+    failed_derived_rows: List[int] = []
     hostnames: List[str] = []
     units: List[List[str]] = []
 
@@ -338,6 +340,11 @@ def extract_df_from_data(
                 derived_metric: (
                     DerivedValueWithUnit | DerivedValueDict | DerivedValue
                 ) = (None if values is None else derive_metric(*values, *conf))
+                if values is None:
+                    # A failed run (ignore_failures=True) has nothing to derive
+                    # from. Its metric names and units are filled in after the
+                    # loop, from a run that succeeded.
+                    failed_derived_rows.append(len(all_transformed_values))
                 if isinstance(derived_metric, Mapping):
                     # If the derived metric is a dict, then we have multiple metrics
                     # and use the keys of the dict as metric names.
@@ -372,11 +379,12 @@ def extract_df_from_data(
                         all_transformed_values_units.append(derived_metric_unit)
 
                     else:
-                        warnings.warn(
-                            DERIVED_METRIC_MISSING_UNIT_WARNING.format(
-                                derive_metric_func_name
+                        if values is not None:
+                            warnings.warn(
+                                DERIVED_METRIC_MISSING_UNIT_WARNING.format(
+                                    derive_metric_func_name
+                                )
                             )
-                        )
                         all_transformed_values.append(derived_metric)
                         all_transformed_values_units.append(np.nan)
                     all_transformed_metrics.append(derive_metric_func_name)
@@ -432,6 +440,29 @@ def extract_df_from_data(
                 # No collected info available for this run, append None
                 for name in custom_info_names:
                     custom_info_arrays[name].append(None)
+
+    # Report the derived metrics of a failed run as missing values under the
+    # metric names and units that a successful run produced. Otherwise they
+    # would form a separate metric named after derive_metric, without a unit.
+    if failed_derived_rows:
+        failed_rows = set(failed_derived_rows)
+        succeeded_row = next(
+            (
+                row
+                for row in range(len(all_transformed_metrics))
+                if row not in failed_rows
+            ),
+            None,
+        )
+        if succeeded_row is not None:
+            derived_names = all_transformed_metrics[succeeded_row]
+            derived_units = all_transformed_values_units[succeeded_row]
+            for row in failed_derived_rows:
+                all_transformed_metrics[row] = derived_names
+                all_transformed_values_units[row] = derived_units
+                if isinstance(derived_names, list):
+                    missing_values: List[DerivedValue] = [None] * len(derived_names)
+                    all_transformed_values[row] = missing_values
 
     # Create the DataFrame with the initial columns
     df_data = {
