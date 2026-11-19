@@ -294,7 +294,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_unit() -> None:
         return n / time, "elem/ns"
 
     # The first run succeeds and the second one fails
-    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    profiling_data = {
+        "run0": [_action_data("my_kernel")],
+        "run1": [_failed_action_data()],
+    }
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         df = extraction.extract_df_from_data(
@@ -305,6 +308,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_unit() -> None:
             _profiled_func,
             throughput,
             VerbosityLevel.SILENT,
+            invocations={
+                "run0": _session.Invocation("add", 0, 0),
+                "run1": _session.Invocation("add", 0, 1),
+            },
         )
 
     derived = df[df["Metric"] == "throughput"]
@@ -327,7 +334,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_names() -> None:
         return {"throughput": (n / time, "elem/ns"), "cost": (time / n, "ns/elem")}
 
     # The first config succeeds and the second one fails
-    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    profiling_data = {
+        "config0": [_action_data("my_kernel")],
+        "config1": [_failed_action_data()],
+    }
     df = extraction.extract_df_from_data(
         profiling_data,
         ["gpu__time_duration.sum"],
@@ -336,6 +346,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_names() -> None:
         _profiled_func,
         derived,
         VerbosityLevel.SILENT,
+        invocations={
+            "config0": _session.Invocation("add", 0, 0),
+            "config1": _session.Invocation("add", 1, 0),
+        },
     )
 
     assert set(df["Metric"]) == {"gpu__time_duration.sum", "throughput", "cost"}
