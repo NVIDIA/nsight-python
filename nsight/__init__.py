@@ -4,9 +4,13 @@
 import os
 from importlib.metadata import version
 
-from nsight import analyze, exceptions, experimental
+from nsight import analyze, exceptions, experimental, sanitize
 from nsight.annotation import annotate
 from nsight.collection import ncu
+from nsight.collection.compute_sanitizer import (
+    ComputeSanitizerOptions,
+    ComputeSanitizerTool,
+)
 from nsight.info_collector import CollectionScope, InfoCollector
 from nsight.tools_manager import Tool, activate, deactivate, get_active_tool
 from nsight.utils import VerbosityLevel, col_panel, row_panel
@@ -28,6 +32,8 @@ __version__ = version("nsight-python")
 
 __all__ = [
     "CollectionScope",
+    "ComputeSanitizerOptions",
+    "ComputeSanitizerTool",
     "InfoCollector",
     "Tool",
     "VerbosityLevel",
@@ -37,4 +43,5 @@ __all__ = [
     "deactivate",
     "experimental",
     "get_active_tool",
+    "sanitize",
 ]

@@ -5,8 +5,11 @@ nsight.annotate
 ================
 
 .. note::
-   ``nsight.annotate`` is used to mark which code regions to profile, but it does not run the profiler by itself.
-   You must use it inside a function decorated with :func:`@nsight.analyze.kernel <nsight.analyze.kernel>` to actually collect metrics.
-   See :doc:`/overview/core_concepts` for details.
+   ``nsight.annotate`` marks NVTX regions but does not select or run a tool.
+   To collect profiling metrics, use it inside a function decorated with
+   :func:`@nsight.analyze.kernel <nsight.analyze.kernel>`; see
+   :doc:`/overview/core_concepts`. For Compute Sanitizer, activate
+   :attr:`nsight.Tool.COMPUTE_SANITIZER` and use ``nsight.annotate`` without
+   that decorator; see :ref:`tools-compute-sanitizer`.
 
 .. autoclass:: nsight.annotate

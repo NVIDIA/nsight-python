@@ -39,24 +39,15 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
-        pytorch_image: ["nvcr.io/nvidia/pytorch:26.09-py3"]
+        pytorch_image: ["nvcr.io/nvidia/pytorch:26.11-py3"]
         platform:
           - runner: linux-amd64-gpu-h100-latest-1
-            ncu_installer_url: "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-x86_64-2026.2.1.6.run"
           - runner: linux-arm64-gpu-l4-latest-1
-            ncu_installer_url: "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_2_1/nsight_compute-linux-sbsa-2026.2.1.6.run"
     container:
       image: ${{ matrix.pytorch_image }}
       options: "--cap-add=SYS_ADMIN --gpus all"
     steps:
       - uses: actions/checkout@v5
-      - name: "Install NCU 2026.2.1.0 (CUDA 13.3 Update 1)"
-        run: |
-          curl -L -o ncu_installer.run "${{ matrix.platform.ncu_installer_url }}"
-          chmod +x ncu_installer.run
-          ./ncu_installer.run -- -noprompt
-          rm ncu_installer.run
-          echo "/usr/local/NVIDIA-Nsight-Compute-2026.2" >> $GITHUB_PATH
       - name: "Running Tests"
         run: |
           pip install hatch
@@ -67,7 +58,7 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
-        pytorch_image: ["nvcr.io/nvidia/pytorch:26.09-py3"]
+        pytorch_image: ["nvcr.io/nvidia/pytorch:26.11-py3"]
         platform:
           - runner: linux-amd64-gpu-h100-latest-1
           - runner: linux-arm64-gpu-l4-latest-1
@@ -89,14 +80,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: "Install NCU 2026.3.0 (CUDA 13.4)"
+      - name: "Install NCU 2026.4.0 (CUDA 13.5)"
         shell: pwsh
         run: |
-          curl.exe -fL -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_3_0/nsight_compute-windows-x86_64-2026.3.0.13.msi"
+          curl.exe -fL -o ncu_installer.msi "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2026_4_0/nsight_compute-windows-x86_64-2026.4.0.10.msi"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Start-Process msiexec.exe -Wait -ArgumentList '/i ncu_installer.msi /quiet /norestart'
           Remove-Item ncu_installer.msi
-          "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.3.0" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\Program Files\NVIDIA Corporation\Nsight Compute 2026.4.0" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: "Install MSVC Redistributable (required by torch)"
         shell: pwsh
         run: |

@@ -43,6 +43,18 @@ class NCUNotAvailableError(Exception):
     pass
 
 
+class ComputeSanitizerNotAvailableError(Exception):
+    """Raised when the Compute Sanitizer executable cannot be found."""
+
+    pass
+
+
+class ComputeSanitizerNotSupportedError(Exception):
+    """Raised when Compute Sanitizer lacks features required by Nsight Python."""
+
+    pass
+
+
 class ThermalControlError(Exception):
     """
     Base exception for thermal control errors.

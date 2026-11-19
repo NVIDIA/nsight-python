@@ -95,9 +95,9 @@ def is_active_annotation(name: str) -> bool:
 
 class annotate:
     """
-    A decorator/context-manager hybrid for marking profiling regions.
-    The encapsulated code will be profiled and associated with an NVTX
-    range of the given annotate name.
+    A decorator/context-manager hybrid for marking NVTX regions.
+    Profiling uses these regions to associate kernels with metrics; Compute
+    Sanitizer uses them to select regions to check.
 
     Example usage::
 
@@ -113,7 +113,8 @@ class annotate:
     Args:
         name: Name of the annotation to be used for profiling. Annotation names
             must be unique per thread within a single profiling run. Different
-            threads may reuse a name; their kernels form one sample.
+            threads may reuse a name; their kernels form one sample. Compute
+            Sanitizer permits reused names.
         ignore_failures: Flag indicating whether to ignore
             failures in the annotate context. If set to ``True``, any exceptions
             raised within the context will be ignored, and the profiling will
@@ -125,11 +126,13 @@ class annotate:
     Raises:
         ValueError: If attempting to enter a nested annotation context, or if
             an annotation with the same name has already been used in this
-            thread and profiling run. Nested annotations are not supported.
+            thread and profiling run. Nested annotations are not supported;
+            profiling requires unique names to avoid incorrect results.
+            Compute Sanitizer permits reused names.
     Note:
         All annotations are created under the NVTX domain ``"nsight-python"``.
         This domain is used internally to filter and identify Nsight Python
-        annotations in profiling tools.
+        annotations in profiling tools and Compute Sanitizer.
 
     Note:
         Nested annotations are currently not supported. However, since each
@@ -156,13 +159,26 @@ class annotate:
         During collection, entering a range from a config/run info collector
         or after the profiled function returns raises immediately.
         """
+        from nsight.tools_manager import Tool, get_active_tool
 
-        # Check for nested annotations
+        # TODO: A decorated function reuses this instance across calls. Concurrent
+        # threads can overwrite self._range_id and end the wrong NVTX range;
+        # keep the range ID per invocation if concurrent calls are supported.
+        # Nested annotations are unsupported for every tool.
         if _is_in_annotation():
             raise ValueError(
                 f"Nested annotations are not supported. "
                 f"Cannot enter annotation '{self.name}' while another annotation is active."
             )
+
+        if get_active_tool() == Tool.COMPUTE_SANITIZER:
+            # Sanitizer filters NVTX ranges directly. It needs neither unique
+            # names nor the profiling metadata collected for each annotation.
+            _set_in_annotation(True)
+            self._range_id = nvtx.start_range(
+                message=self.name, domain=utils.NVTX_DOMAIN
+            )
+            return self
 
         # Check for duplicate annotation names
         if is_active_annotation(self.name):

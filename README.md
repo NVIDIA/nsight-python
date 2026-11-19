@@ -25,10 +25,10 @@ Tests require NVIDIA Nsight Compute to be installed and available in your PATH.
 
 ### Prerequisites
 
-Install pytest:
+Install pytest and the pytest-isolated plugin (some tests run in a fresh process):
 
 ```bash
-pip install pytest
+pip install pytest pytest-isolated
 ```
 
 ### PyTorch Dependency

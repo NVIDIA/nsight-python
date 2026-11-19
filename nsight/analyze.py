@@ -15,6 +15,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 import nsight.collection as collection
+import nsight.exceptions as exceptions
 import nsight.visualization as visualization
 from nsight.info_collector import CollectionScope, InfoCollector
 from nsight.tools_manager import Tool, activate, get_active_tool
@@ -184,6 +185,8 @@ def kernel(
             - Remaining arguments: Must exactly match the signature of the decorated function. In other words, the original function's parameters are passed in order.
 
             **Note on units**: When units are not provided (returning scalar values instead of tuples), ``np.nan`` will be added to the ``Unit`` column in the dataframe and a warning will be issued. To avoid warnings and ensure proper unit tracking, return tuples ``(value, unit)`` for all derived metrics.
+
+            **Note on failed runs**: ``derive_metric`` is not called for a run that failed under ``ignore_failures=True``; its derived metrics are NaN, under the metric names and units of a successful run. If no run succeeded, they are labelled with the function name and have no unit.
 
             See the examples for concrete use cases.
         normalize_against:
@@ -498,7 +501,8 @@ def kernel(
         )
 
         def get_collector() -> collection.core.NsightCollector:
-            if get_active_tool() == Tool.CUPTI:
+            active_tool = get_active_tool()
+            if active_tool == Tool.CUPTI:
                 # clock_control, cache_control and replay_mode have no
                 # meaning for CUPTI, so the collector does not take them.
                 return collection.cupti.CUPTICollector(
@@ -506,13 +510,20 @@ def kernel(
                     ignore_kernel_list=ignore_kernel_list,
                     combine_kernel_metrics=combine_kernel_metrics,
                 )
-            return collection.ncu.NCUCollector(
-                metrics=metrics,
-                ignore_kernel_list=ignore_kernel_list,
-                combine_kernel_metrics=combine_kernel_metrics,
-                clock_control=clock_control,
-                cache_control=cache_control,
-                replay_mode=replay_mode,
+            # NCU is the active tool, or nothing is active yet and the NCU
+            # collector loads it on first use.
+            if active_tool is None or active_tool == Tool.NCU:
+                return collection.ncu.NCUCollector(
+                    metrics=metrics,
+                    ignore_kernel_list=ignore_kernel_list,
+                    combine_kernel_metrics=combine_kernel_metrics,
+                    clock_control=clock_control,
+                    cache_control=cache_control,
+                    replay_mode=replay_mode,
+                )
+            # Only NCU and CUPTI are supported; error out for any other tool.
+            raise exceptions.ProfilerException(
+                f"nsight.analyze.kernel is not supported under {active_tool.name}."
             )
 
         return collection.core.NsightProfiler(settings, get_collector)

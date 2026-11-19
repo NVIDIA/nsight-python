@@ -13,6 +13,7 @@ import pickle
 from pathlib import Path
 from typing import Any
 
+import pytest
 from cuda.core import (  # pylint: disable=import-error
     Device,
     LaunchConfig,
@@ -526,8 +527,12 @@ def benchmark_collector_error_handling(n: int) -> None:
 
 def test_collector_error_handling() -> None:
     """Test that collector failures don't crash profiling."""
-    # Should not raise despite failing_collector error
-    results = benchmark_collector_error_handling()
+    # Should not raise despite failing_collector error; the failure is reported
+    # as a RuntimeWarning instead.
+    with pytest.warns(
+        RuntimeWarning, match="Info collector '_failing_collector' .* raised ValueError"
+    ):
+        results = benchmark_collector_error_handling()
 
     if results is None:
         return  # No profiling data was returned.
