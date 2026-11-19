@@ -7,6 +7,8 @@ Release Notes
 .. toctree::
    :maxdepth: 2
 
+   topics/variable-kernel-counts
+
    topics/updates-in-nsight-python-1.1.1
    topics/updates-in-nsight-python-1.1.0
    topics/updates-in-nsight-python-1.0.0

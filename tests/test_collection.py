@@ -14,6 +14,7 @@ import pytest
 
 from nsight import (
     VerbosityLevel,
+    _session,
     collection,
     exceptions,
     extraction,
@@ -247,11 +248,15 @@ def test_extract_df_from_data_raises_if_no_kernel_was_attributed() -> None:
             _profiled_func,
             None,
             VerbosityLevel.SILENT,
+            invocations={},
         )
 
 
 def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
-    profiling_data = {"autotuned": [_action_data("my_kernel")] * 6}
+    profiling_data = {
+        "run0": [_action_data("my_kernel")] * 3,
+        "run1": [_action_data("my_kernel")] * 3,
+    }
     with pytest.raises(RuntimeError) as exc_info:
         extraction.extract_df_from_data(
             profiling_data,
@@ -261,9 +266,14 @@ def test_extract_df_from_data_multiple_kernels_reports_per_run_count() -> None:
             _profiled_func,
             None,
             VerbosityLevel.SILENT,
+            invocations={
+                "run0": _session.Invocation("autotuned", 0, 0),
+                "run1": _session.Invocation("autotuned", 0, 1),
+            },
         )
     message = str(exc_info.value)
-    assert "More than one (6 in 2 runs, 3 per run on average) kernel" in message
+    assert "More than one (total=3) kernel" in message
+    assert "config 0, run 0" in message
     assert "autotunes" in message
 
 
@@ -284,7 +294,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_unit() -> None:
         return n / time, "elem/ns"
 
     # The first run succeeds and the second one fails
-    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    profiling_data = {
+        "run0": [_action_data("my_kernel")],
+        "run1": [_failed_action_data()],
+    }
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         df = extraction.extract_df_from_data(
@@ -295,6 +308,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_unit() -> None:
             _profiled_func,
             throughput,
             VerbosityLevel.SILENT,
+            invocations={
+                "run0": _session.Invocation("add", 0, 0),
+                "run1": _session.Invocation("add", 0, 1),
+            },
         )
 
     derived = df[df["Metric"] == "throughput"]
@@ -317,7 +334,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_names() -> None:
         return {"throughput": (n / time, "elem/ns"), "cost": (time / n, "ns/elem")}
 
     # The first config succeeds and the second one fails
-    profiling_data = {"add": [_action_data("my_kernel"), _failed_action_data()]}
+    profiling_data = {
+        "config0": [_action_data("my_kernel")],
+        "config1": [_failed_action_data()],
+    }
     df = extraction.extract_df_from_data(
         profiling_data,
         ["gpu__time_duration.sum"],
@@ -326,6 +346,10 @@ def test_extract_df_from_data_failed_run_keeps_derived_metric_names() -> None:
         _profiled_func,
         derived,
         VerbosityLevel.SILENT,
+        invocations={
+            "config0": _session.Invocation("add", 0, 0),
+            "config1": _session.Invocation("add", 1, 0),
+        },
     )
 
     assert set(df["Metric"]) == {"gpu__time_duration.sum", "throughput", "cost"}
