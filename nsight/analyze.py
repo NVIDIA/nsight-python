@@ -165,7 +165,7 @@ def kernel(
             automatically.
 
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
-        runs:  Number of times each configuration should be executed. Must be at least 1.
+        runs:  Number of times each configuration should be executed. Must be >= 1.
         derive_metric:
             A function to transform the collected metrics.
             This can be used to compute derived metrics like TFLOPs that cannot
