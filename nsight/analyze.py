@@ -165,7 +165,7 @@ def kernel(
             automatically.
 
             If the configs are not provided at decoration time, they must be provided when calling the decorated function.
-        runs:  Number of times each configuration should be executed.
+        runs:  Number of times each configuration should be executed. Must be at least 1.
         derive_metric:
             A function to transform the collected metrics.
             This can be used to compute derived metrics like TFLOPs that cannot
@@ -389,6 +389,8 @@ def kernel(
     # These are decorator parameters, so reject illegal values now rather than
     # when the decorated function is first called. Whether the active tool
     # supports a legal value is a separate check, made by the collector.
+    if runs < 1:
+        raise ValueError(f"runs must be >= 1, got {runs}")
     if clock_control not in ("base", "none"):
         raise ValueError(
             f"Invalid clock_control {clock_control!r}. Expected 'base' or 'none'."
