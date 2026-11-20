@@ -1846,6 +1846,16 @@ def test_empty_annotation_run_preserves_gpu_samples(tmp_path: Any) -> None:
     assert result.AvgValue.iloc[0] == pytest.approx(raw.Value.mean())
 
 
+@pytest.mark.parametrize("runs", [0, -1])  # type: ignore[untyped-decorator]
+def test_parameter_runs_must_be_positive(runs: int) -> None:
+    """runs < 1 is rejected when the decorator is applied."""
+    with pytest.raises(ValueError, match="runs must be >= 1"):
+
+        @nsight.analyze.kernel(runs=runs)
+        def profiled() -> None:
+            pass
+
+
 def test_analyze_kernel_rejects_compute_sanitizer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
