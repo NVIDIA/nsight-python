@@ -122,7 +122,8 @@ def kernel(
     Where:
         - ``*args``: Original function arguments (when providing a single config)
         - ``configs``: Optional iterable of configurations (overrides decorator-time configs)
-        - ``**kwargs``: Original function keyword arguments
+        - ``**kwargs``: Not supported yet. Passing keyword arguments raises
+          ``ProfilerException``; pass the values positionally or via ``configs``
         - Returns ``ProfileResults`` object containing profiling data
 
     .. warning::

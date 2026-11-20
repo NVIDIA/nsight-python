@@ -139,29 +139,33 @@ def _sanitize_configs(
 
     Raises:
         exceptions.ProfilerException: If no configurations are provided and the
-            function has parameters, or if configurations are provided both at
-            decoration time and runtime.
+            function has parameters, if configurations are provided both at
+            decoration time and runtime, or if any keyword arguments are
+            provided.
         AssertionError: If `configs` is not a list when provided.
 
     Notes:
         - If `args` are provided, `configs` and `decorator_configs` must be `None`.
         - If `configs` is provided, `decorator_configs` must be `None`, and vice versa.
         - For functions with no parameters, an empty config [()] is created automatically.
-        - The function combines `args` and `kwargs` into a single list if `args` are provided.
-        - The function assumes that `kwargs` keys are in the expected order when combining.
+        - If `args` are provided, they form a single configuration.
+        - `kwargs` are not supported yet and are rejected.
         - Config values are mapped to parameters in declaration order. Both
           regular and keyword-only parameters are supported. Parameters with
           defaults may be omitted from configs. ``*args`` and ``**kwargs``
           are tolerated but ignored.
     """
+    # kwargs are not supported yet. Reject them with or without positional
+    # arguments: dropping them would profile a different configuration than
+    # the one the caller asked for.
+    if len(kwargs) != 0:
+        raise exceptions.ProfilerException(
+            f"Keyword arguments are not supported yet: {list(kwargs.keys())}"
+        )
+
     if len(args) > 0:
         # We do not expect any configs in this case
         assert configs is None and decorator_configs is None
-        # kwargs not supported here yet
-        if len(kwargs) != 0:
-            raise exceptions.ProfilerException(
-                f"Keyword arguments are not supported yet: {list(kwargs.keys())}"
-            )
 
         configs = [list(args)]
 
