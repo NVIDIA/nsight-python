@@ -152,7 +152,6 @@ def config_at_call_time_default(x: int = 42) -> None:
 
 def test_config_at_call_time_with_only_kwargs() -> None:
     """Test that keyword arguments without positional arguments also raise."""
-    # Without this error the call is profiled with the default x=42 instead.
     with pytest.raises(
         exceptions.ProfilerException, match="Keyword arguments are not supported yet"
     ):
