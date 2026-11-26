@@ -119,18 +119,20 @@ def get_ncu_report_version() -> tuple[int, ...] | None:
 def check_ncu_report_version(
     ncu_version: tuple[int, ...], report_version: tuple[int, ...]
 ) -> None:
-    """Raise ProfilerException if ncu-report is older than the installed ncu.
+    """Warn if ncu-report is older than the installed ncu.
 
-    Only the major and minor components are compared. An older ncu-report may
-    not be able to read reports written by a newer NVIDIA Nsight Compute.
+    Only the major and minor components are compared. An older ncu-report reads
+    reports written by a newer NVIDIA Nsight Compute on a best-effort basis.
     """
     if report_version[:2] < ncu_version[:2]:
         report_str = ".".join(str(x) for x in report_version)
         ncu_str = ".".join(str(x) for x in ncu_version)
-        raise exceptions.ProfilerException(
+        warnings.warn(
             f"The installed ncu-report {report_str} is older than NVIDIA Nsight "
-            f"Compute {ncu_str}, so it may not be able to read the profiling "
-            f"results. Please install ncu-report>={ncu_version[0]}.{ncu_version[1]}"
+            f"Compute {ncu_str}, so reading the profiling results is best effort. "
+            f"ncu-report>={ncu_version[0]}.{ncu_version[1]} is recommended.",
+            category=RuntimeWarning,
+            stacklevel=3,
         )
 
 

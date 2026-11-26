@@ -4,7 +4,7 @@
 Runtime Requirements
 =====================
 
-* **NVIDIA Nsight Compute from CUDA Toolkit 13.3 Update 1 or later**: nsight-python uses the NVIDIA Nsight Compute CLI (ncu 2026.2.1+). Ensure ``ncu`` is installed and available on the system path. The installed ``ncu-report`` package must be at least as new (by major and minor version) as this NVIDIA Nsight Compute.
+* **NVIDIA Nsight Compute from CUDA Toolkit 13.3 Update 1 or later**: nsight-python uses the NVIDIA Nsight Compute CLI (ncu 2026.2.1+). Ensure ``ncu`` is installed and available on the system path. An ``ncu-report`` package at least as new (by major and minor version) as this NVIDIA Nsight Compute is recommended. Using an older ``ncu-report`` with a newer NVIDIA Nsight Compute CLI may result in some errors or incomplete or incorrect profiling results.
 
 * **NVIDIA Compute Sanitizer**: The :ref:`Compute Sanitizer tool <tools-compute-sanitizer>` requires ``compute-sanitizer`` version 2026.4.0.0 or later (included with CUDA Toolkit 13.5), installed and available on the system path. The matching collection backend must be beside the executable or in its ``libs`` subdirectory (or in the matching internal build layout).
 

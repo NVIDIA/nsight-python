@@ -192,14 +192,16 @@ def test_attribute_kernels_pairs_sequential_ranges() -> None:
 def test_check_ncu_report_version_accepts_same_or_newer(
     report_version: tuple[int, ...],
 ) -> None:
-    collection.ncu.check_ncu_report_version((2026, 2, 1, 0), report_version)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        collection.ncu.check_ncu_report_version((2026, 2, 1, 0), report_version)
 
 
 @pytest.mark.parametrize("report_version", [(2026, 1), (2025, 3)])  # type: ignore[untyped-decorator]
-def test_check_ncu_report_version_rejects_older(
+def test_check_ncu_report_version_warns_if_older(
     report_version: tuple[int, ...],
 ) -> None:
-    with pytest.raises(exceptions.ProfilerException, match=re.escape("2026.2.1.0")):
+    with pytest.warns(RuntimeWarning, match=re.escape("2026.2.1.0")):
         collection.ncu.check_ncu_report_version((2026, 2, 1, 0), report_version)
 
 
